@@ -233,3 +233,11 @@ td.num { font-variant-numeric: tabular-nums; }
 .av-opt { border: 2px solid var(--line); background: #fbfdff; border-radius: 16px; padding: 6px; cursor: pointer; display: grid; place-items: center; }
 .av-opt:hover { border-color: var(--blue); }
 .av-opt[aria-checked="true"] { border-color: var(--gold); background: #fff7e0; box-shadow: 0 0 0 3px rgba(244,178,27,.3); }
+
+.sealed { color: var(--muted); font-size: .88rem; white-space: nowrap; }
+.rv-list { display: grid; gap: 10px; }
+.rv-pair { display: grid; grid-template-columns: 1fr auto 1fr; gap: 14px; align-items: center; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.rv-person { display: flex; gap: 12px; align-items: center; min-width: 0; }
+.rv-name { font-family: var(--display); font-size: 1.2rem; color: var(--navy); line-height: 1.2; }
+.rv-arrow { font-size: 1.6rem; color: var(--ember); }
+@media (max-width: 600px) { .rv-pair { grid-template-columns: 1fr; } .rv-arrow { transform: rotate(90deg); justify-self: start; margin-left: 22px; } }

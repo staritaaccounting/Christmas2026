@@ -18,7 +18,7 @@ const store = {
 const S = {
   token: store.get("srao_token"), adminToken: store.get("srao_admin"),
   loaded: false, fatal: null,
-  settings: {}, weeks: [], participants: {}, order: [], me: null, myPick: null, candidates: [], joined: 0, spunCount: 0,
+  settings: {}, weeks: [], participants: {}, order: [], me: null, myPick: null, wheelIds: [], canSpin: false, joined: 0, spunCount: 0,
   admin: null, view: "home", authMode: "new",
   draft: null, dirtyProfile: false, weeksDraft: null, weeksDirty: false, setDraft: null, setDirty: false,
   showPairs: false, uploading: 0, spinning: false, rolling: false, wheelRot: 0, busy: 0
@@ -92,7 +92,8 @@ function applyState(st) {
   S.settings = st.settings || {}; S.weeks = st.weeks || []; S.joined = st.joined || 0; S.spunCount = st.spunCount || 0;
   S.participants = {}; S.order = [];
   (st.participants || []).forEach(p => { S.participants[p.id] = p; S.order.push(p.id); });
-  S.me = st.me || null; S.myPick = st.myPick || null; S.candidates = st.candidates || [];
+  S.me = st.me || null; S.myPick = st.myPick || null; S.wheelIds = st.wheel || []; S.canSpin = !!st.canSpin;
+  S.revealed = !!st.revealed; S.reveal = st.reveal || [];
   if (S.me && !S.dirtyProfile) S.draft = null;
   S.loaded = true;
 }
@@ -140,11 +141,12 @@ const typing = () => { const a = document.activeElement; return a && a.closest &
 function scheduleRender() { if (S.rolling || typing()) { renderPending = true; return; } render(); }
 document.addEventListener("focusout", () => { if (!renderPending) return; setTimeout(() => { if (renderPending && !typing() && !S.rolling) render(); }, 300); });
 
-const VIEWS = [["home", "Home"], ["my-profile", "My Profile & Wish List"], ["spin-wheel", "Spin the Wheel"], ["weekly-gifts", "Weekly Gifts"], ["wish-wall", "Wish Wall"], ["admin", "Organizer"]];
+const VIEWS = [["big-reveal", "Big Reveal"], ["home", "Home"], ["my-profile", "My Profile & Wish List"], ["spin-wheel", "Spin the Wheel"], ["weekly-gifts", "Weekly Gifts"], ["wish-wall", "Wish Wall"], ["admin", "Organizer"]];
 function renderTabs() {
   const box = document.getElementById("tabs"); box.replaceChildren();
   for (const [id, label] of VIEWS) {
     if (id === "admin" && !S.adminToken && S.view !== "admin") continue;
+    if (id === "big-reveal" && !S.revealed) continue;
     box.append(h("button", { class: "tab", "aria-current": S.view === id ? "page" : null, onclick: () => { location.hash = id; } }, label));
   }
 }
@@ -157,7 +159,8 @@ function renderHeader() {
   if (st.budget) chips.append(h("span", { class: "chip" }, "Budget ₱" + Number(st.budget).toLocaleString("en-PH") + " per gift"));
   const d = daysUntil(st.partyDate);
   if (d != null) chips.append(h("span", { class: "chip gold" }, d > 1 ? d + " days to the reveal party" : d === 1 ? "Reveal party is tomorrow" : d === 0 ? "Reveal party is today!" : "Reveal party: " + fmtDate(st.partyDate)));
-  chips.append(h("span", { class: "chip" }, st.wheelOpen ? "Wheel is open: " + S.spunCount + " of " + S.joined + " spun" : (st.registrationOpen === false ? "Registration closed" : "Registration open")));
+  if (S.revealed) chips.append(h("span", { class: "chip gold" }, "Reveal day: names unsealed"));
+  else chips.append(h("span", { class: "chip" }, st.wheelOpen ? "Wheel is open: " + S.spunCount + " of " + S.joined + " spun" : (st.registrationOpen === false ? "Registration closed" : "Registration open")));
 }
 function render() {
   renderPending = false;
@@ -176,6 +179,7 @@ function viewBody() {
     case "spin-wheel": return viewWheel();
     case "weekly-gifts": return viewWeeks();
     case "wish-wall": return viewWall();
+    case "big-reveal": return viewReveal();
     default: return viewHome();
   }
 }
@@ -195,7 +199,8 @@ function viewHome() {
   const st = S.settings, mine = S.me, pick = S.myPick;
   const go = v => () => { location.hash = v; };
   let lead, cta;
-  if (!mine) { lead = "Join with your alias and wish list, then spin the wheel to find out who you'll surprise every week until the reveal party."; cta = h("button", { class: "btn gold", onclick: go("my-profile") }, "Join or sign in"); }
+  if (S.revealed) { lead = "It\u2019s the Christmas party! Real names are unsealed. See who gave to whom."; cta = h("button", { class: "btn gold", onclick: go("big-reveal") }, "See the big reveal"); }
+  else if (!mine) { lead = "Join with your alias and wish list, then spin the wheel to find out who you'll surprise every week until the reveal party."; cta = h("button", { class: "btn gold", onclick: go("my-profile") }, "Join or sign in"); }
   else if (pick) { lead = "You've spun the wheel. Check your Manito or Manita's wish list and this week's theme."; cta = h("button", { class: "btn gold", onclick: go("spin-wheel") }, "See who you picked"); }
   else if (st.wheelOpen) { lead = "The wheel is open! Everyone who joined is on it except you. One spin each."; cta = h("button", { class: "btn gold", onclick: go("spin-wheel") }, "Spin the wheel"); }
   else { lead = "You're in. The organizer will open the wheel once everyone has joined. Keep your wish list up to date meanwhile."; cta = h("button", { class: "btn gold", onclick: go("my-profile") }, "Update my wish list"); }
@@ -251,7 +256,7 @@ function viewProfile() {
   panel.append(h("div", { class: "grid2" },
     h("div", { class: "field" }, h("label", { for: "fName" }, "Your full name"),
       h("input", { type: "text", id: "fName", value: d.name, maxlength: "60", placeholder: "e.g. Maria Santos", autocomplete: "name", oninput: e => { d.name = e.target.value; mark(); } }),
-      h("span", { class: "hint", text: "Only the organizer sees your real name." })),
+      h("span", { class: "hint", text: "Sealed: nobody, not even the organizer, can see it until the Christmas party." })),
     h("div", { class: "field" }, h("label", { for: "fAlias" }, "Alias / codename"),
       h("input", { type: "text", id: "fAlias", value: d.alias, maxlength: "30", placeholder: "e.g. Ledger Elf", oninput: e => { d.alias = e.target.value; mark(); } }),
       h("span", { class: "hint", text: "Shown on the Wish Wall. Keep it fun and secret." }))));
@@ -413,19 +418,19 @@ function viewWheel() {
     return panel;
   }
   if (S.myPick && !S.rolling) return revealCard(panel, mine, S.myPick);
-  const cands = S.candidates.filter(id => S.participants[id] && id !== mine.id);
+  const cands = S.wheelIds.filter(id => S.participants[id] && id !== mine.id);
   const labels = cands.map(wheelLabel);
   panel.append(h("div", { class: "panel-head" }, h("div", null, h("h2", { text: "Spin the Wheel" }),
-    h("p", { class: "sub", text: "Everyone who joined is on the wheel except you, so you can never land on your own name. You get one spin." }))));
+    h("p", { class: "sub", text: "Everyone who joined is on the wheel except you, so you can never land on your own name. Names stay on the wheel even after someone picks them, but the wheel never lands on a name that's already taken. You get one spin." }))));
   if (!st.wheelOpen) panel.append(h("div", { class: "notice", text: "The wheel isn't open yet. The organizer opens it once everyone has joined. Here's a preview of who's on your wheel so far." }));
-  else if (!cands.length) panel.append(h("div", { class: "notice warn", text: "No names are left for you to spin. The organizer will add you to the exchange." }));
+  else if (!S.canSpin) panel.append(h("div", { class: "notice warn", text: "There's no name left for you to land on. The organizer will add you to the exchange." }));
   const cv = h("canvas", { role: "img", "aria-label": "Wheel with " + cands.length + " names" });
-  const btn = h("button", { class: "btn gold spin-btn", disabled: !st.wheelOpen || !cands.length || S.spinning, onclick: () => spin(cv, btn) }, S.spinning ? "Spinning…" : "Spin the wheel");
+  const btn = h("button", { class: "btn gold spin-btn", disabled: !st.wheelOpen || !S.canSpin || S.spinning, onclick: () => spin(cv, btn) }, S.spinning ? "Spinning…" : "Spin the wheel");
   const roller = h("div", { class: "roller", "aria-live": "polite" });
   panel.append(h("div", { class: "wheel-wrap" },
     h("div", { class: "wheel-box" }, h("span", { class: "pointer", "aria-hidden": "true" }), cv, h("div", { class: "hub" }, h("img", { src: MARK, alt: "" }))),
     btn, roller,
-    h("p", { class: "hint", text: cands.length + (cands.length === 1 ? " name" : " names") + " on your wheel" + (st.wheelOpen && S.spunCount ? " · " + S.spunCount + " already picked" : "") })));
+    h("p", { class: "hint", text: cands.length + (cands.length === 1 ? " name" : " names") + " on your wheel" })));
   requestAnimationFrame(() => drawWheel(cv, labels, S.wheelRot || 0));
   S._wheel = { cv, labels, cands, roller };
   return panel;
@@ -442,7 +447,8 @@ async function spin(cv, btn) {
   try { res = await api("spin", null, true); }
   catch (e) { idle = false; S.wheelRot = rot % (2 * Math.PI); S.rolling = false; S.spinning = false; toast(e.message, 5500); render(); return; }
   idle = false; S.wheelRot = rot % (2 * Math.PI);
-  let cands = (res.candidates || []).filter(id => S.participants[id]);
+  // Same wheel the person sees: every name except their own. It slows down on the name the server picked.
+  let cands = w.cands.slice();
   if (!cands.includes(res.receiverId)) cands = cands.concat(res.receiverId);
   const labels = cands.map(wheelLabel);
   animateWheel(cv, labels, cands.indexOf(res.receiverId), () => {
@@ -457,7 +463,7 @@ function revealCard(panel, mine, pick) {
   panel.append(h("div", { class: "panel-head" },
     h("div", null, h("span", { class: "tag " + (rec.gender === "F" ? "f" : "") }, "Your " + roleOf(rec.gender)),
       h("div", { class: "big-name", style: "margin-top:8px", text: rec.alias }),
-      h("p", { class: "sub", text: "Their real name stays a secret until the reveal party." })),
+      rec.name ? h("p", { class: "sub" }, "Revealed: ", h("b", { text: rec.name })) : h("p", { class: "sub", text: "Their real name stays sealed until the Christmas party." })),
     avatarEl(rec.avatar, 120, rec.alias + "'s avatar")));
   panel.append(h("div", { class: "clue" }, h("span", { class: "clue-k", text: "Clue: who " + (rec.gender === "F" ? "she" : "he") + " is" }), h("p", { text: rec.clue || "No clue given yet." })));
   panel.append(h("div", { class: "notice" }, "Keep it secret! Sign your gifts as ", h("b", { text: "“" + mine.alias + "”" }), " and address them to ", h("b", { text: "“" + rec.alias + "”" }), "."));
@@ -467,6 +473,29 @@ function revealCard(panel, mine, pick) {
     h("div", { class: "field" }, h("h3", { text: rec.alias + "’s wish list" }), wishList(rec)),
     h("div", { class: "field" }, h("h3", { text: "Sizes & preferences" }), h("p", { class: "note", text: rec.notes || "Nothing noted yet." }))));
   if (rec.photos && rec.photos.length) panel.append(h("div", { class: "field" }, h("h3", { text: "Sample photos" }), photoStrip(rec.photos)));
+  return panel;
+}
+
+/* ---- Big Reveal (party day) ---- */
+function personCard(p, label) {
+  if (!p) return h("div", { class: "rv-person" }, h("span", { class: "hint", text: "Left the exchange" }));
+  return h("div", { class: "rv-person" }, avatarEl(p.avatar, 64, p.alias + "\u2019s avatar"),
+    h("div", null, h("span", { class: "hint", text: label }), h("div", { class: "rv-name", text: p.name || p.alias }), h("div", { class: "hint", text: "\u201c" + p.alias + "\u201d" })));
+}
+function viewReveal() {
+  const P = S.participants;
+  const panel = h("section", { class: "panel" }, h("div", { class: "panel-head" }, h("div", null, h("h2", { text: "The Big Reveal" }),
+    h("p", { class: "sub", text: "Merry Christmas, Sta. Rita! Here\u2019s who was behind every alias." }))));
+  if (!S.revealed) { panel.append(h("div", { class: "notice", text: "Names unseal on the Christmas party date." })); return panel; }
+  if (S.me) {
+    const myGiver = (S.reveal.find(k => k.receiverId === S.me.id) || {}).giverId;
+    if (myGiver && P[myGiver]) panel.append(h("div", { class: "clue" }, h("span", { class: "clue-k", text: "Your secret " + roleOf(P[myGiver].gender) + " was" }),
+      h("div", { class: "row" }, avatarEl(P[myGiver].avatar, 72), h("p", { text: (P[myGiver].name || P[myGiver].alias) + " \u00b7 \u201c" + P[myGiver].alias + "\u201d" }))));
+  }
+  const pairs = S.reveal.filter(k => P[k.giverId]).sort((a, b) => (P[a.giverId].name || "").localeCompare(P[b.giverId].name || ""));
+  panel.append(pairs.length ? h("div", { class: "rv-list" }, pairs.map(k => h("div", { class: "rv-pair" },
+    personCard(P[k.giverId], "Gave to"), h("span", { class: "rv-arrow", "aria-hidden": "true", text: "\u2192" }), personCard(P[k.receiverId], roleOf(P[k.receiverId] && P[k.receiverId].gender)))))
+    : h("p", { class: "empty", text: "No pairs were drawn this year." }));
   return panel;
 }
 
@@ -518,6 +547,9 @@ function viewAdmin() {
         h("button", { class: "btn primary", type: "submit" }, "Sign in")));
   }
   const A = S.admin;
+  const sealed = !A.revealed;
+  const lockNote = A.settings.partyDate ? "Sealed until " + fmtDate(A.settings.partyDate) : "Sealed until the party date";
+  const who = p => p ? (p.name ? p.name + " (" + p.alias + ")" : p.alias) : "?";
   if (!A) { if (!S.adminLoading) { S.adminLoading = true; api("adminState").catch(e => toast(e.message, 5000)).finally(() => { S.adminLoading = false; render(); }); } return h("div", { class: "panel" }, h("p", { class: "sub", text: "Loading the organizer dashboard…" })); }
   const P = {}; A.participants.forEach(p => { P[p.id] = p; });
   const ids = A.participants.map(p => p.id);
@@ -527,7 +559,7 @@ function viewAdmin() {
   const spunN = A.picks.length;
 
   out.push(h("section", { class: "panel" },
-    h("div", { class: "panel-head" }, h("div", null, h("h2", { text: "Organizer dashboard" }), h("p", { class: "sub", text: "Only someone with the organizer PIN sees this tab. Pairings stay hidden until you choose to show them." })),
+    h("div", { class: "panel-head" }, h("div", null, h("h2", { text: "Organizer dashboard" }), h("p", { class: "sub", text: sealed ? "Real names and usernames are sealed, even from you, until the Christmas party on " + (A.settings.partyDate ? fmtDate(A.settings.partyDate) : "the party date") + ". Until then you manage everyone by alias." : "Reveal day is here! Real names are now unsealed for everyone." })),
       h("div", { class: "row" }, h("button", { class: "btn", onclick: () => act("adminState") }, "Refresh"), h("button", { class: "btn", onclick: () => { S.adminToken = null; S.admin = null; store.set("srao_admin", null); render(); } }, "Sign out"))),
     h("div", { class: "stats" },
       h("div", { class: "stat" }, h("b", { text: String(ids.length) }), h("span", { text: "staff joined" })),
@@ -543,12 +575,12 @@ function viewAdmin() {
     draw.append(h("div", { class: "row" }, h("button", { class: "btn gold", disabled: ids.length < 3, onclick: async () => { if (await modal(st.round ? "Reopen the wheel?" : "Open the wheel?", st.round ? "Staff who haven't spun yet can spin." : "All " + ids.length + " staff can then spin once. Registration closes; you can reopen it in Event settings.", st.round ? "Reopen" : "Open the wheel")) act("openWheel", null, "The wheel is open! Tell everyone to go spin."); } }, st.round ? "Reopen the wheel" : "Open the wheel")));
   } else {
     draw.append(h("div", { class: "notice good", text: "The wheel is open. " + spunN + " of " + ids.length + " staff have spun." }));
-    if (A.pending.length) draw.append(h("p", { class: "hint" }, "Still to spin: ", A.pending.map(id => P[id] ? P[id].name : "?").join(", ")));
+    if (A.pending.length) draw.append(h("p", { class: "hint" }, "Still to spin: ", A.pending.map(id => who(P[id])).join(", ")));
     draw.append(h("div", { class: "row" },
       A.pending.length ? h("button", { class: "btn", onclick: async () => { if (await modal("Assign the rest?", "The wheel picks for the " + A.pending.length + " staff who haven't spun yet. Nobody gets their own name.", "Assign")) act("assignRest", null, "Done. Everyone now has a Manito or Manita."); } }, "Assign the rest automatically") : null,
       h("button", { class: "btn", onclick: () => act("pauseWheel", null, "Wheel paused. Picks so far are kept.") }, "Pause the wheel")));
   }
-  if (st.round && A.stuck.length) draw.append(h("div", { class: "notice warn" }, A.stuck.map(id => P[id] ? P[id].name : "?").join(", "), " can't spin because no names are left for them. ",
+  if (st.round && A.stuck.length) draw.append(h("div", { class: "notice warn" }, A.stuck.map(id => who(P[id])).join(", "), " can't spin because no names are left for them. ",
     h("button", { class: "btn", style: "margin-left:6px", onclick: async () => { if (await modal("Add to an existing pair?", "For each person, one existing giver is switched to them, and they take over that giver's old pick. That giver will see a new name.", "Add")) act("addLate", { ids: A.stuck }, "Added. Let the switched giver know to check their wheel tab."); } }, "Add them to an existing pair")));
   if (st.round) {
     draw.append(h("div", { class: "row" },
@@ -556,9 +588,9 @@ function viewAdmin() {
       h("span", { class: "spacer" }),
       h("button", { class: "btn danger", onclick: async () => { if (await modal("Reset the wheel?", "Every pick is erased and everyone spins again. Anyone who already saw their Manito or Manita will get a new one.", "Reset", true)) act("resetWheel", null, "The wheel is reset. Everyone can spin again."); } }, "Reset the wheel")));
     if (S.showPairs) {
-      const rows = A.picks.filter(k => P[k.giverId]).sort((a, b) => P[a.giverId].name.localeCompare(P[b.giverId].name));
+      const rows = A.picks.filter(k => P[k.giverId]).sort((a, b) => P[a.giverId].alias.localeCompare(P[b.giverId].alias));
       draw.append(rows.length ? h("div", { class: "tablewrap" }, h("table", null, h("thead", null, h("tr", null, h("th", { text: "Giver" }), h("th", { text: "Gives to" }))),
-        h("tbody", null, rows.map(k => { const g = P[k.giverId], r = P[k.receiverId]; return h("tr", null, h("td", { text: g.name + " (" + g.alias + ")" }), h("td", { text: r ? r.name + " (" + r.alias + ")" : "Left the exchange" })); }))))
+        h("tbody", null, rows.map(k => { const g = P[k.giverId], r = P[k.receiverId]; return h("tr", null, h("td", { text: who(g) }), h("td", { text: r ? who(r) : "Left the exchange" })); }))))
         : h("p", { class: "hint", text: "No one has spun yet." }));
     }
   }
@@ -601,19 +633,22 @@ function viewAdmin() {
   out.push(h("section", { class: "panel" }, h("h2", { text: "Event settings" }),
     h("div", { class: "grid2" },
       h("div", { class: "field" }, h("label", { for: "sName" }, "Event title"), h("input", { type: "text", id: "sName", value: sd.eventName, maxlength: "60", oninput: e => { sd.eventName = e.target.value; markS(); } })),
-      h("div", { class: "field" }, h("label", { for: "sDate" }, "Reveal party date"), h("input", { type: "date", id: "sDate", value: sd.partyDate, oninput: e => { sd.partyDate = e.target.value; markS(); } })),
+      h("div", { class: "field" }, h("label", { for: "sDate" }, "Christmas party date (real names unseal)"), h("input", { type: "date", id: "sDate", value: sd.partyDate, min: st.round && st.partyDate ? st.partyDate : null, oninput: e => { sd.partyDate = e.target.value; markS(); } }),
+        h("span", { class: "hint", text: st.round ? "Locked: it can only move later, so no one can unseal names early." : "Required before you open the wheel. Locks once the wheel opens." })),
       h("div", { class: "field" }, h("label", { for: "sBudget" }, "Budget per gift (₱)"), h("input", { type: "number", id: "sBudget", min: "0", step: "50", value: sd.budget, oninput: e => { sd.budget = e.target.value; markS(); } }))),
     h("label", { class: "switch", for: "sOpen" }, h("input", { type: "checkbox", id: "sOpen", checked: sd.registrationOpen, onchange: e => { sd.registrationOpen = e.target.checked; markS(); } }), "Registration open (new staff can join)"),
     h("div", null, h("button", { class: "btn primary", onclick: async () => { const j = await act("saveSettings", { settings: sd }, "Settings saved."); if (j) { S.setDirty = false; refresh(true); } } }, "Save settings"))));
 
   out.push(h("section", { class: "panel" }, h("h2", { text: "Participants" }),
-    ids.length ? h("div", { class: "tablewrap" }, h("table", null, h("thead", null, h("tr", null, h("th", { text: "Name" }), h("th", { text: "Username" }), h("th", { text: "Alias" }), h("th", { text: "Role" }), h("th", { text: "Wishes" }), h("th", { text: "" }))),
-      h("tbody", null, A.participants.slice().sort((a, b) => a.name.localeCompare(b.name)).map(p => h("tr", null,
-        h("td", null, h("div", { class: "row", style: "flex-wrap:nowrap;gap:8px" }, avatarEl(p.avatar, 32), p.name)), h("td", { text: p.username }), h("td", { text: p.alias }), h("td", null, h("span", { class: "tag " + (p.gender === "F" ? "f" : ""), text: roleOf(p.gender) })),
+    ids.length ? h("div", { class: "tablewrap" }, h("table", null, h("thead", null, h("tr", null, h("th", { text: "Alias" }), h("th", { text: "Real name" }), h("th", { text: "Username" }), h("th", { text: "Role" }), h("th", { text: "Wishes" }), h("th", { text: "" }))),
+      h("tbody", null, A.participants.slice().sort((a, b) => a.alias.localeCompare(b.alias)).map(p => h("tr", null,
+        h("td", null, h("div", { class: "row", style: "flex-wrap:nowrap;gap:8px" }, avatarEl(p.avatar, 32), p.alias)),
+        h("td", null, p.name ? p.name : h("span", { class: "sealed", text: "🔒 " + lockNote })),
+        h("td", null, p.username ? p.username : h("span", { class: "sealed", text: "🔒 Sealed" })), h("td", null, h("span", { class: "tag " + (p.gender === "F" ? "f" : ""), text: roleOf(p.gender) })),
         h("td", { class: "num", text: String((p.wishes || []).length) + (p.photos && p.photos.length ? " · " + p.photos.length + " photo" + (p.photos.length > 1 ? "s" : "") : "") }),
         h("td", null, h("div", { class: "row", style: "flex-wrap:nowrap" },
-          h("button", { class: "btn", onclick: async () => { const pin = await modal("Reset " + p.name + "'s PIN", "Enter a new 4 to 6 digit PIN and give it to them privately.", "Reset PIN", false, { label: "New PIN", inputmode: "numeric", maxlength: "6", placeholder: "e.g. 2468" }); if (pin) act("resetPin", { id: p.id, pin: String(pin).trim() }, "PIN reset for " + p.name + "."); } }, "Reset PIN"),
-          h("button", { class: "btn danger", onclick: async () => { if (await modal("Remove " + p.name + "?", "Their profile, wish list and photos are deleted." + (st.round ? " Picks are adjusted so the exchange still works." : ""), "Remove", true)) act("removeParticipant", { id: p.id }, p.name + " removed."); } }, "Remove"))))))))
+          h("button", { class: "btn", onclick: async () => { const pin = await modal("Reset " + p.alias + "'s PIN", "Enter a new 4 to 6 digit PIN and give it to them privately.", "Reset PIN", false, { label: "New PIN", inputmode: "numeric", maxlength: "6", placeholder: "e.g. 2468" }); if (pin) act("resetPin", { id: p.id, pin: String(pin).trim() }, "PIN reset for " + p.alias + "."); } }, "Reset PIN"),
+          h("button", { class: "btn danger", onclick: async () => { if (await modal("Remove " + p.alias + "?", "Their profile, wish list and photos are deleted." + (st.round ? " Picks are adjusted so the exchange still works." : ""), "Remove", true)) act("removeParticipant", { id: p.id }, p.alias + " removed."); } }, "Remove"))))))))
       : h("p", { class: "hint", text: "No one has joined yet." })));
   return out;
 }
