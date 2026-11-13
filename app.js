@@ -192,8 +192,11 @@ function heroCarousel() {
   if (S.hero && S.hero.key === key) return S.hero.el;
   if (S.hero) clearInterval(S.hero.timer);
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const slides = urls.map((u, i) => h("img", { class: "slide" + (i === 0 ? " on" : ""), src: u, alt: "Sta. Rita Accounting Office photo " + (i + 1) + " of " + urls.length,
-    loading: i < 2 ? "eager" : "lazy", referrerpolicy: "no-referrer", onerror: e => { e.target.classList.add("broken"); } }));
+  // Each slide shows the whole photo (no cropping) over a soft, blurred copy of itself.
+  const slides = urls.map((u, i) => h("div", { class: "slide" + (i === 0 ? " on" : "") },
+    h("img", { class: "slide-bg", src: u, alt: "", "aria-hidden": "true", loading: i < 2 ? "eager" : "lazy", referrerpolicy: "no-referrer" }),
+    h("img", { class: "slide-fg", src: u, alt: "Sta. Rita Accounting Office photo " + (i + 1) + " of " + urls.length, loading: i < 2 ? "eager" : "lazy", referrerpolicy: "no-referrer",
+      onerror: e => { e.target.parentNode.classList.add("broken"); } })));
   const dots = urls.length > 1 ? h("div", { class: "dots", role: "tablist", "aria-label": "Choose a picture" },
     urls.map((u, i) => h("button", { class: "dot", role: "tab", "aria-label": "Picture " + (i + 1), "aria-selected": i === 0 ? "true" : "false", onclick: () => { go(i); restart(); } }))) : null;
   const el = h("div", { class: "hero carousel", "aria-roledescription": "carousel", "aria-label": "SRAO through the Years" }, slides, dots);
@@ -691,7 +694,15 @@ function viewSlidesAdmin(A) {
     grid.append(h("label", { class: "slide-card slide-add", for: "slideFile" }, h("span", null, h("b", { text: "+ Upload pictures" }), h("br"), h("span", { class: "hint", text: "JPG, PNG or WebP · wide photos look best" }))),
       h("input", { type: "file", id: "slideFile", accept: "image/png,image/jpeg,image/webp", multiple: true, hidden: true, onchange: e => uploadSlides(e.target.files) }));
   panel.append(grid);
-  if (!slides.length) panel.append(h("p", { class: "hint", text: "No pictures yet, so the home page shows the team photo." }));
+  const fb = A.facebook || {};
+  if (fb.connected && !fb.error) panel.append(h("div", { class: "notice good" }, h("b", { text: "Facebook page connected. " }),
+    fb.count + " photo" + (fb.count === 1 ? "" : "s") + " from your page play after the pictures above. They refresh every hour. ",
+    h("button", { class: "btn sm", style: "margin-left:6px", onclick: () => act("refreshFacebook", null, "Fetched the latest Facebook photos.") }, "Refresh now")),
+    fb.preview && fb.preview.length ? h("div", { class: "fb-strip" }, fb.preview.map((u, i) => h("img", { src: u, alt: "Facebook photo " + (i + 1), loading: "lazy", referrerpolicy: "no-referrer" }))) : null);
+  else if (fb.connected) panel.append(h("div", { class: "notice warn" }, h("b", { text: "Facebook photos couldn't load. " }), fb.error + " Check FB_PAGE and FB_PAGE_TOKEN in Script properties (see README). ",
+    h("button", { class: "btn sm", style: "margin-left:6px", onclick: () => act("refreshFacebook", null, "Tried Facebook again.") }, "Try again")));
+  else panel.append(h("p", { class: "hint", text: "Want your Facebook page photos here too? Add FB_PAGE and FB_PAGE_TOKEN in the Apps Script Script properties. The README explains how to get the token." }));
+  if (!slides.length && !(fb.count > 0)) panel.append(h("p", { class: "hint", text: "No pictures yet, so the home page shows the team photo." }));
   return panel;
 }
 async function uploadSlides(files) {
