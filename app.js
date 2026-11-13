@@ -6,7 +6,7 @@ const CFG = window.SRAO_CONFIG || {};
 const API = CFG.API_URL || "";
 const TZ = "Asia/Manila";
 const MAX_WISHES = 5, MAX_PHOTOS = 3, AVATARS = 20;
-const MARK = "assets/mark.png", VIDEO = "assets/intro.mp4", POSTER = "assets/poster.jpg";
+const MARK = "assets/mark.png", POSTER = "assets/poster.jpg", SLIDE_MS = 3000;
 const SUGGESTIONS = ["Something Sweet", "Something Soft", "Something Red", "Something Hot", "Something Green", "Something Long",
   "Something Round", "Something Useful", "Something Handmade", "Something Personal", "Something to Read", "Something Pinoy"];
 
@@ -93,7 +93,7 @@ function applyState(st) {
   S.participants = {}; S.order = [];
   (st.participants || []).forEach(p => { S.participants[p.id] = p; S.order.push(p.id); });
   S.me = st.me || null; S.myPick = st.myPick || null; S.wheelIds = st.wheel || []; S.canSpin = !!st.canSpin;
-  S.revealed = !!st.revealed; S.reveal = st.reveal || [];
+  S.revealed = !!st.revealed; S.reveal = st.reveal || []; S.carousel = st.carousel || [];
   if (S.me && !S.dirtyProfile) S.draft = null;
   S.loaded = true;
 }
@@ -168,7 +168,6 @@ function render() {
   const main = document.getElementById("main"); const y = window.scrollY;
   main.replaceChildren(...[viewBody()].flat(4).filter(Boolean));
   window.scrollTo(0, y);
-  if (S.view === "home" && S.heroVideo && !matchMedia("(prefers-reduced-motion: reduce)").matches) S.heroVideo.play().catch(() => {});
 }
 function viewBody() {
   if (S.view === "admin") return viewAdmin();
@@ -185,15 +184,34 @@ function viewBody() {
 }
 
 /* ---- Landing ---- */
-function heroVideo() {
-  if (!S.heroVideo) {
-    const v = document.createElement("video");
-    v.src = VIDEO; v.poster = POSTER; v.muted = true; v.loop = true; v.playsInline = true; v.preload = "auto";
-    v.setAttribute("playsinline", ""); v.setAttribute("muted", ""); v.setAttribute("aria-label", "Sta. Rita Accounting Office team Christmas video");
-    if (!matchMedia("(prefers-reduced-motion: reduce)").matches) v.autoplay = true;
-    S.heroVideo = v;
-  }
-  return S.heroVideo;
+/* Landing carousel: pictures from the "Carousel" sheet, one every 3 seconds. Built once and kept
+   across re-renders so the slideshow doesn't restart every time data refreshes. */
+function heroCarousel() {
+  const urls = (S.carousel && S.carousel.length) ? S.carousel : [POSTER];
+  const key = urls.join("|");
+  if (S.hero && S.hero.key === key) return S.hero.el;
+  if (S.hero) clearInterval(S.hero.timer);
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const slides = urls.map((u, i) => h("img", { class: "slide" + (i === 0 ? " on" : ""), src: u, alt: "Sta. Rita Accounting Office photo " + (i + 1) + " of " + urls.length,
+    loading: i < 2 ? "eager" : "lazy", referrerpolicy: "no-referrer", onerror: e => { e.target.classList.add("broken"); } }));
+  const dots = urls.length > 1 ? h("div", { class: "dots", role: "tablist", "aria-label": "Choose a picture" },
+    urls.map((u, i) => h("button", { class: "dot", role: "tab", "aria-label": "Picture " + (i + 1), "aria-selected": i === 0 ? "true" : "false", onclick: () => { go(i); restart(); } }))) : null;
+  const el = h("div", { class: "hero carousel", "aria-roledescription": "carousel", "aria-label": "SRAO through the Years" }, slides, dots);
+  const state = { key, el, i: 0, timer: null };
+  const go = i => {
+    const n = slides.length; if (!n) return;
+    let k = ((i % n) + n) % n, guard = 0;
+    while (slides[k].classList.contains("broken") && guard++ < n) k = (k + 1) % n;
+    slides.forEach((s, j) => s.classList.toggle("on", j === k));
+    if (dots) dots.querySelectorAll(".dot").forEach((d, j) => d.setAttribute("aria-selected", j === k ? "true" : "false"));
+    state.i = k;
+  };
+  const restart = () => { clearInterval(state.timer); if (!reduce && slides.length > 1) state.timer = setInterval(() => { if (!document.hidden && S.view === "home") go(state.i + 1); }, SLIDE_MS); };
+  el.addEventListener("mouseenter", () => clearInterval(state.timer));
+  el.addEventListener("mouseleave", restart);
+  restart();
+  S.hero = state;
+  return el;
 }
 function viewHome() {
   const st = S.settings, mine = S.me, pick = S.myPick;
@@ -204,9 +222,7 @@ function viewHome() {
   else if (pick) { lead = "You've spun the wheel. Check your Manito or Manita's wish list and this week's theme."; cta = h("button", { class: "btn gold", onclick: go("spin-wheel") }, "See who you picked"); }
   else if (st.wheelOpen) { lead = "The wheel is open! Everyone who joined is on it except you. One spin each."; cta = h("button", { class: "btn gold", onclick: go("spin-wheel") }, "Spin the wheel"); }
   else { lead = "You're in. The organizer will open the wheel once everyone has joined. Keep your wish list up to date meanwhile."; cta = h("button", { class: "btn gold", onclick: go("my-profile") }, "Update my wish list"); }
-  const v = heroVideo();
-  const sound = h("button", { class: "sound", onclick: e => { v.muted = !v.muted; if (!v.muted) v.play().catch(() => {}); e.currentTarget.textContent = v.muted ? "Sound off" : "Sound on"; } }, v.muted ? "Sound off" : "Sound on");
-  const hero = h("section", { class: "hero" }, v, sound);
+  const hero = h("section", { class: "years" }, h("h2", { class: "years-title", text: "SRAO through the Years" }), heroCarousel());
   const bar = h("section", { class: "panel cta-bar" }, h("p", { class: "sub", text: lead }),
     h("div", { class: "row" }, cta, h("button", { class: "btn", onclick: go("weekly-gifts") }, "Weekly gift themes")));
   const weeks = sortedWeeks(S.weeks); const stOf = weekStatus(weeks); const nx = weeks.find(w => stOf(w) === "next");
@@ -346,11 +362,11 @@ async function saveProfile() {
   } catch (e) { toast(e.message, 5500); }
   render();
 }
-async function compress(file) {
+async function compress(file, maxSide) {
   const url = URL.createObjectURL(file);
   try {
     const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
-    const k = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight));
+    const k = Math.min(1, (maxSide || 1280) / Math.max(img.naturalWidth, img.naturalHeight));
     const c = document.createElement("canvas"); c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
     const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height);
     return c.toDataURL("image/jpeg", 0.85);
@@ -630,6 +646,8 @@ function viewAdmin() {
 
   if (!S.setDraft || !S.setDirty) S.setDraft = { eventName: st.eventName || "Online Manito & Manita", partyDate: st.partyDate || "", budget: st.budget === "" || st.budget == null ? "" : String(st.budget), registrationOpen: st.registrationOpen !== false };
   const sd = S.setDraft; const markS = () => { S.setDirty = true; };
+  out.push(viewSlidesAdmin(A));
+
   out.push(h("section", { class: "panel" }, h("h2", { text: "Event settings" }),
     h("div", { class: "grid2" },
       h("div", { class: "field" }, h("label", { for: "sName" }, "Event title"), h("input", { type: "text", id: "sName", value: sd.eventName, maxlength: "60", oninput: e => { sd.eventName = e.target.value; markS(); } })),
@@ -642,15 +660,52 @@ function viewAdmin() {
   out.push(h("section", { class: "panel" }, h("h2", { text: "Participants" }),
     ids.length ? h("div", { class: "tablewrap" }, h("table", null, h("thead", null, h("tr", null, h("th", { text: "Alias" }), h("th", { text: "Real name" }), h("th", { text: "Username" }), h("th", { text: "Role" }), h("th", { text: "Wishes" }), h("th", { text: "" }))),
       h("tbody", null, A.participants.slice().sort((a, b) => a.alias.localeCompare(b.alias)).map(p => h("tr", null,
-        h("td", null, h("div", { class: "row", style: "flex-wrap:nowrap;gap:8px" }, avatarEl(p.avatar, 32), p.alias)),
+        h("td", null, h("div", { class: "row", style: "flex-wrap:nowrap;gap:8px;white-space:nowrap" }, avatarEl(p.avatar, 32), p.alias)),
         h("td", null, p.name ? p.name : h("span", { class: "sealed", text: "🔒 " + lockNote })),
         h("td", null, p.username ? p.username : h("span", { class: "sealed", text: "🔒 Sealed" })), h("td", null, h("span", { class: "tag " + (p.gender === "F" ? "f" : ""), text: roleOf(p.gender) })),
         h("td", { class: "num", text: String((p.wishes || []).length) + (p.photos && p.photos.length ? " · " + p.photos.length + " photo" + (p.photos.length > 1 ? "s" : "") : "") }),
-        h("td", null, h("div", { class: "row", style: "flex-wrap:nowrap" },
-          h("button", { class: "btn", onclick: async () => { const pin = await modal("Reset " + p.alias + "'s PIN", "Enter a new 4 to 6 digit PIN and give it to them privately.", "Reset PIN", false, { label: "New PIN", inputmode: "numeric", maxlength: "6", placeholder: "e.g. 2468" }); if (pin) act("resetPin", { id: p.id, pin: String(pin).trim() }, "PIN reset for " + p.alias + "."); } }, "Reset PIN"),
-          h("button", { class: "btn danger", onclick: async () => { if (await modal("Remove " + p.alias + "?", "Their profile, wish list and photos are deleted." + (st.round ? " Picks are adjusted so the exchange still works." : ""), "Remove", true)) act("removeParticipant", { id: p.id }, p.alias + " removed."); } }, "Remove"))))))))
+        h("td", null, h("div", { class: "row actions" },
+          h("button", { class: "btn sm", onclick: async () => { const pin = await modal("Reset " + p.alias + "'s PIN", "Enter a new 4 to 6 digit PIN and give it to them privately.", "Reset PIN", false, { label: "New PIN", inputmode: "numeric", maxlength: "6", placeholder: "e.g. 2468" }); if (pin) act("resetPin", { id: p.id, pin: String(pin).trim() }, "PIN reset for " + p.alias + "."); } }, "Reset PIN"),
+          h("button", { class: "btn sm", onclick: async () => { const u = await modal("Change " + p.alias + "'s username", "Enter a new username (3 to 30 letters, numbers, dots or dashes) and give it to them privately. Their old username stops working and they'll need to sign in again.", "Change username", false, { label: "New username", maxlength: "30", placeholder: "e.g. maria.santos" }); if (u) act("resetUsername", { id: p.id, username: String(u).trim().toLowerCase() }, "Username changed for " + p.alias + "."); } }, "Change username"),
+          h("button", { class: "btn sm danger", onclick: async () => { if (await modal("Remove " + p.alias + "?", "Their profile, wish list and photos are deleted." + (st.round ? " Picks are adjusted so the exchange still works." : ""), "Remove", true)) act("removeParticipant", { id: p.id }, p.alias + " removed."); } }, "Remove"))))))))
       : h("p", { class: "hint", text: "No one has joined yet." })));
   return out;
+}
+
+/* ---- Organizer: home-page carousel ---- */
+function viewSlidesAdmin(A) {
+  const slides = A.carousel || [];
+  const panel = h("section", { class: "panel" }, h("div", { class: "panel-head" }, h("div", null, h("h2", { text: "Home page carousel: SRAO through the Years" }),
+    h("p", { class: "sub", text: "Pictures on the home page change every 3 seconds, in this order. Uploads are saved to your Google Drive; you can also paste links in the Carousel tab of the Google Sheet." })),
+    h("span", { class: "tag", text: slides.length + (slides.length === 1 ? " picture" : " pictures") + " · up to 30" })));
+  const grid = h("div", { class: "slide-grid" });
+  slides.forEach((s, i) => grid.append(h("figure", { class: "slide-card" },
+    h("div", { class: "slide-thumb" }, s.src && /^(https:|\/)/.test(s.src) ? h("img", { src: s.src, alt: "Carousel picture " + (i + 1), loading: "lazy", referrerpolicy: "no-referrer", onclick: () => lightbox(s.src), onerror: e => { e.target.replaceWith(h("span", { class: "hint", text: "Can't load this picture. Check that it's shared “Anyone with the link”." })); } })
+      : h("span", { class: "hint", text: "Not a picture link: " + String(s.url || "").slice(0, 60) })),
+    h("figcaption", { class: "row" }, h("b", { text: String(i + 1) }), h("span", { class: "spacer" }),
+      h("button", { class: "btn icon", "aria-label": "Move picture " + (i + 1) + " earlier", title: "Move earlier", disabled: i === 0, onclick: () => act("moveSlide", { index: i, url: s.url, dir: -1 }) }, "←"),
+      h("button", { class: "btn icon", "aria-label": "Move picture " + (i + 1) + " later", title: "Move later", disabled: i === slides.length - 1, onclick: () => act("moveSlide", { index: i, url: s.url, dir: 1 }) }, "→"),
+      h("button", { class: "btn icon danger", "aria-label": "Remove picture " + (i + 1), title: "Remove", onclick: async () => { if (await modal("Remove picture " + (i + 1) + "?", "It disappears from the home page. Pictures uploaded here also go to your Google Drive trash.", "Remove", true)) act("deleteSlide", { index: i, url: s.url }, "Picture removed."); } }, "✕")))));
+  for (let k = 0; k < (S.slideUploading || 0); k++) grid.append(h("figure", { class: "slide-card" }, h("div", { class: "slide-thumb" }, h("span", { class: "hint", text: "Uploading…" }))));
+  if (slides.length + (S.slideUploading || 0) < 30)
+    grid.append(h("label", { class: "slide-card slide-add", for: "slideFile" }, h("span", null, h("b", { text: "+ Upload pictures" }), h("br"), h("span", { class: "hint", text: "JPG, PNG or WebP · wide photos look best" }))),
+      h("input", { type: "file", id: "slideFile", accept: "image/png,image/jpeg,image/webp", multiple: true, hidden: true, onchange: e => uploadSlides(e.target.files) }));
+  panel.append(grid);
+  if (!slides.length) panel.append(h("p", { class: "hint", text: "No pictures yet, so the home page shows the team photo." }));
+  return panel;
+}
+async function uploadSlides(files) {
+  const room = 30 - ((S.admin && S.admin.carousel) || []).length - (S.slideUploading || 0);
+  const list = Array.from(files || []).slice(0, Math.max(0, room));
+  if (!list.length) return toast("The carousel holds up to 30 pictures.");
+  S.slideUploading = (S.slideUploading || 0) + list.length; scheduleRender();
+  let ok = 0;
+  for (const f of list) {
+    try { const dataUrl = await compress(f, 1920); await api("uploadSlide", { dataUrl }); ok++; }
+    catch (e) { toast(e.message && e.message !== "[object Event]" ? e.message : "Couldn't read " + f.name + ". Try a JPG or PNG.", 5000); }
+    S.slideUploading--; scheduleRender();
+  }
+  if (ok) { toast(ok + (ok === 1 ? " picture" : " pictures") + " added to the carousel."); refresh(true); }
 }
 
 /* ---------- routing, polling, boot ---------- */

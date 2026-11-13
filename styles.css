@@ -120,13 +120,17 @@ ol.wishes li::marker { color: var(--ember); font-weight: 700; }
 .person .photos .ph { width: 72px; height: 72px; }
 
 /* Landing */
-.hero { position: relative; border-radius: 18px; overflow: hidden; aspect-ratio: 1280 / 536; display: grid; align-items: end; background: var(--navy); color: #fff; }
-.hero video, .hero .poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.hero-in { position: relative; z-index: 1; padding: 28px; display: grid; gap: 12px; max-width: 640px; }
-.hero-in .kicker { font-size: .8rem; letter-spacing: .14em; text-transform: uppercase; color: #cfe0f3; }
-.hero-in h2 { color: #fff; font-size: clamp(1.9rem, 5vw, 2.9rem); line-height: 1.08; }
-.hero-in p { margin: 0; color: #e6eef8; font-size: 1.05rem; max-width: 52ch; }
-.hero .sound { position: absolute; z-index: 2; top: 14px; right: 14px; background: rgba(0,0,0,.45); color: #fff; border: 1px solid rgba(255,255,255,.35); border-radius: 999px; padding: 6px 12px; cursor: pointer; font-weight: 600; font-size: .85rem; }
+.hero { position: relative; border-radius: 18px; overflow: hidden; aspect-ratio: 16 / 7; background: var(--navy); }
+.carousel .slide { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; }
+.carousel .slide.on { opacity: 1; }
+@media (prefers-reduced-motion: no-preference) {
+  .carousel .slide { transition: opacity .8s ease, transform 3.8s ease-out; transform: scale(1.04); }
+  .carousel .slide.on { transform: scale(1); }
+}
+.carousel .dots { position: absolute; z-index: 2; left: 0; right: 0; bottom: 12px; display: flex; justify-content: center; gap: 8px; }
+.carousel .dot { width: 10px; height: 10px; padding: 0; border-radius: 50%; border: 2px solid #fff; background: rgba(255,255,255,.35); cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+.carousel .dot[aria-selected="true"] { background: var(--gold); border-color: var(--gold); width: 24px; border-radius: 999px; }
+@media (max-width: 560px) { .hero { aspect-ratio: 4 / 3; } }
 .btn.light { background: #fff; color: var(--navy); border-color: #fff; }
 .btn.ghost { background: rgba(255,255,255,.12); color: #fff; border-color: rgba(255,255,255,.4); }
 .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
@@ -241,3 +245,21 @@ td.num { font-variant-numeric: tabular-nums; }
 .rv-name { font-family: var(--display); font-size: 1.2rem; color: var(--navy); line-height: 1.2; }
 .rv-arrow { font-size: 1.6rem; color: var(--ember); }
 @media (max-width: 600px) { .rv-pair { grid-template-columns: 1fr; } .rv-arrow { transform: rotate(90deg); justify-self: start; margin-left: 22px; } }
+
+.slide-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.slide-card { margin: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fff; display: grid; }
+.slide-thumb { aspect-ratio: 16 / 9; background: #e9eef5; display: grid; place-items: center; text-align: center; padding: 0; }
+.slide-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; cursor: zoom-in; }
+.slide-thumb .hint { padding: 10px; }
+.slide-card figcaption { padding: 8px 10px; gap: 6px; }
+.slide-card figcaption b { font-family: var(--display); color: var(--ember); font-size: 1.1rem; }
+.slide-add { border: 2px dashed #b9c7d8; background: #f7fafd; place-items: center; text-align: center; min-height: 150px; cursor: pointer; color: var(--navy); padding: 12px; }
+.slide-add:hover { border-color: var(--blue); }
+td .row .btn { white-space: nowrap; }
+.btn.sm { padding: 6px 10px; font-size: .86rem; border-radius: 8px; }
+.row.actions { gap: 6px; justify-content: flex-end; min-width: 220px; }
+.slide-thumb .hint { overflow-wrap: anywhere; }
+
+.years { display: grid; gap: 12px; }
+.years-title { font-size: clamp(1.6rem, 4vw, 2.2rem); color: var(--navy); display: flex; align-items: center; gap: 14px; }
+.years-title::after { content: ""; flex: 1; height: 2px; background: linear-gradient(90deg, var(--gold), transparent); }
