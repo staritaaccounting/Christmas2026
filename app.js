@@ -7,9 +7,6 @@ const API = CFG.API_URL || "";
 const TZ = "Asia/Manila";
 const MAX_WISHES = 5, MAX_PHOTOS = 3, AVATARS = 20;
 const MARK = "assets/mark.png", POSTER = "assets/poster.jpg", SLIDE_MS = 3000;
-const SUGGESTIONS = ["Something Sweet", "Something Soft", "Something Red", "Something Hot", "Something Green", "Something Long",
-  "Something Round", "Something Useful", "Something Handmade", "Something Personal", "Something to Read", "Something Pinoy"];
-
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
   set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} }
@@ -93,7 +90,7 @@ function applyState(st) {
   S.participants = {}; S.order = [];
   (st.participants || []).forEach(p => { S.participants[p.id] = p; S.order.push(p.id); });
   S.me = st.me || null; S.myPick = st.myPick || null; S.wheelIds = st.wheel || []; S.canSpin = !!st.canSpin;
-  S.revealed = !!st.revealed; S.reveal = st.reveal || []; S.carousel = st.carousel || [];
+  S.revealed = !!st.revealed; S.reveal = st.reveal || []; S.carousel = st.carousel || []; S.themeOptions = (st.settings && st.settings.themeOptions) || [];
   if (S.me && !S.dirtyProfile) S.draft = null;
   S.loaded = true;
 }
@@ -234,7 +231,7 @@ function viewHome() {
     h("div", { class: "stat" }, h("b", { text: String(S.joined) }), h("span", { text: "staff joined" })),
     h("div", { class: "stat" }, h("b", { text: st.wheelOpen ? S.spunCount + "/" + S.joined : "Soon" }), h("span", { text: st.wheelOpen ? "have spun the wheel" : "wheel opens" })),
     h("div", { class: "stat" }, h("b", { text: d == null ? "TBA" : d < 0 ? "Done" : String(d) }), h("span", { text: d == null ? "reveal party date" : "days to the reveal party" })),
-    h("div", { class: "stat" }, h("b", { style: "font-size:1.25rem;line-height:1.3;padding:6px 0", text: nx ? nx.theme : "TBA" }), h("span", { text: nx && nx.date ? "next gift · " + fmtDate(nx.date) : "next gift theme" })));
+    h("div", { class: "stat" }, h("b", { style: "font-size:1.25rem;line-height:1.3;padding:6px 0", text: nx ? (nx.theme || "Spin soon") : "TBA" }), h("span", { text: nx && nx.date ? "next gift · " + fmtDate(nx.date) : "next gift theme" })));
   const how = h("section", { class: "panel" }, h("h2", { text: "How it works" }), h("div", { class: "steps" },
     h("div", { class: "step" }, h("span", { class: "num" }, "1"), h("div", null, h("b", { text: "Join" }), h("span", { text: "Create a username and PIN, then enter your name, a secret alias, gender, a clue about yourself and your wish list." }))),
     h("div", { class: "step" }, h("span", { class: "num" }, "2"), h("div", null, h("b", { text: "Spin the wheel" }), h("span", { text: "Everyone who joined is on the wheel by alias, except you. Where it stops is your Manito or Manita: you get their alias and a clue." }))),
@@ -408,23 +405,26 @@ function drawWheel(cv, labels, rot) {
     let col = WHEEL_COLORS[i % WHEEL_COLORS.length]; if (n > 1 && i === n - 1 && i % WHEEL_COLORS.length === 0) col = WHEEL_COLORS[3];
     x.beginPath(); x.moveTo(c, c); x.arc(c, c, R, s, s + a); x.closePath(); x.fillStyle = col; x.fill();
     x.strokeStyle = "rgba(255,255,255,.85)"; x.lineWidth = 2; x.stroke();
-    x.save(); x.translate(c, c); x.rotate(s + a / 2);
+    // Keep every label upright: text on the left half of the wheel is flipped so it never reads upside down.
+    const mid = s + a / 2, flip = Math.cos(mid) < 0;
+    x.save(); x.translate(c, c); x.rotate(flip ? mid + Math.PI : mid);
     const fs = Math.max(11, Math.min(19, R * a * 0.42, 260 / Math.max(6, labels[i].length)));
-    x.font = "700 " + fs + "px Figtree, system-ui, sans-serif"; x.textAlign = "right"; x.textBaseline = "middle";
-    x.fillStyle = col === "#f4b21b" ? "#3a2800" : "#ffffff"; x.fillText(labels[i], R - 14, 0); x.restore();
+    x.font = "700 " + fs + "px Figtree, system-ui, sans-serif"; x.textAlign = flip ? "left" : "right"; x.textBaseline = "middle";
+    x.fillStyle = col === "#f4b21b" ? "#3a2800" : "#ffffff"; x.fillText(labels[i], flip ? -(R - 14) : R - 14, 0); x.restore();
   }
 }
-function animateWheel(cv, labels, idx, done) {
+function animateWheel(cv, labels, idx, done, rotKey) {
+  rotKey = rotKey || "wheelRot";
   const n = labels.length, a = 2 * Math.PI / n, TAU = 2 * Math.PI;
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const start = S.wheelRot || 0;
+  const start = S[rotKey] || 0;
   const target = -(idx + 0.5) * a + (Math.random() - 0.5) * a * 0.6;
   const end = target + TAU * Math.ceil((start - target) / TAU) + (reduce ? 1 : 6) * TAU;
   const dur = reduce ? 700 : 5600, t0 = performance.now();
   const frame = now => {
     const p = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - p, 4);
     drawWheel(cv, labels, start + (end - start) * e);
-    if (p < 1) requestAnimationFrame(frame); else { S.wheelRot = end % TAU; done(); }
+    if (p < 1) requestAnimationFrame(frame); else { S[rotKey] = end % TAU; done(); }
   };
   requestAnimationFrame(frame);
 }
@@ -487,7 +487,7 @@ function revealCard(panel, mine, pick) {
   panel.append(h("div", { class: "clue" }, h("span", { class: "clue-k", text: "Clue: who " + (rec.gender === "F" ? "she" : "he") + " is" }), h("p", { text: rec.clue || "No clue given yet." })));
   panel.append(h("div", { class: "notice" }, "Keep it secret! Sign your gifts as ", h("b", { text: "“" + mine.alias + "”" }), " and address them to ", h("b", { text: "“" + rec.alias + "”" }), "."));
   const weeks = sortedWeeks(S.weeks); const stOf = weekStatus(weeks); const nx = weeks.find(w => stOf(w) === "next");
-  if (nx) panel.append(h("div", { class: "notice good" }, "Next gift: ", h("b", { text: nx.theme }), nx.date ? " · due " + fmtDate(nx.date) : "", nx.note ? " · " + nx.note : ""));
+  if (nx) panel.append(h("div", { class: "notice good" }, "Next gift: ", h("b", { text: nx.theme || "theme to be spun on the Something Wheel" }), nx.date ? " · due " + fmtDate(nx.date) : "", nx.note ? " · " + nx.note : ""));
   panel.append(h("div", { class: "grid2" },
     h("div", { class: "field" }, h("h3", { text: rec.alias + "’s wish list" }), wishList(rec)),
     h("div", { class: "field" }, h("h3", { text: "Sizes & preferences" }), h("p", { class: "note", text: rec.notes || "Nothing noted yet." }))));
@@ -522,18 +522,82 @@ function viewReveal() {
 function viewWeeks() {
   const weeks = sortedWeeks(S.weeks); const stOf = weekStatus(weeks);
   const panel = h("section", { class: "panel" }, h("div", { class: "panel-head" }, h("div", null, h("h2", { text: "Weekly gift themes" }),
-    h("p", { class: "sub", text: "Each week has a “Something…” theme set by the organizer. Leave your gift for your Manito or Manita by the due date, signed with your alias." }))));
+    h("p", { class: "sub", text: "Each week has a “Something…” theme, picked on the Something Wheel before the due date. Leave your gift for your Manito or Manita by the due date, signed with your alias." }))));
   if (!weeks.length) { panel.append(h("p", { class: "empty", text: "The organizer hasn't posted the weekly themes yet." })); return panel; }
   const given = (S.me && S.me.given) || {};
+  const sw = themeWheelPanel(weeks);
   panel.append(h("div", { class: "weeks" }, weeks.map((w, i) => { const s = stOf(w);
     return h("div", { class: "week " + s },
       h("div", { class: "wk" }, "Week " + (i + 1), h("small", { text: w.date ? fmtDate(w.date) : "Date to follow" })),
-      h("div", null, h("div", { class: "theme", text: w.theme || "Theme to follow" }), w.note ? h("div", { class: "hint", text: w.note }) : null),
+      h("div", null, w.theme ? h("div", { class: "theme", text: w.theme }) : h("div", { class: "theme spin-me", text: s === "past" ? "No theme" : "🎡 Spin to reveal" }), w.note ? h("div", { class: "hint", text: w.note }) : null),
       h("div", { class: "row" },
         h("span", { class: "tag " + (s === "past" ? "done" : s), text: s === "past" ? "Done" : s === "next" ? (w.date === todayStr() ? "Today" : "Up next") : "Upcoming" }),
         S.myPick ? h("label", { class: "switch", title: "Only the organizer sees this count" },
           h("input", { type: "checkbox", id: "gv-" + w.id, checked: !!given[w.id], onchange: e => act("markGiven", { weekId: w.id, value: e.target.checked }, e.target.checked ? "Marked as given. Nice one!" : "Unmarked.") }), "Gift given") : null)); })));
+  return sw ? [sw, panel] : panel;
+}
+
+/* ---- Something Wheel: spin each week's theme before its due date ---- */
+const themeLabel = s => { const t = String(s).replace(/^something\s+/i, ""); return t.length > 18 ? t.slice(0, 17) + "…" : t; };
+function themeWheelPanel(weeks) {
+  const t = todayStr();
+  const idx = weeks.findIndex(w => !w.theme && (!w.date || w.date >= t));
+  if (idx < 0) return null;
+  const wk = weeks[idx];
+  const opts = S.themeOptions || [];
+  const used = new Set(weeks.filter(w => w.theme).map(w => w.theme.toLowerCase()));
+  let left = opts.filter(o => !used.has(o.toLowerCase())); if (!left.length) left = opts.slice();
+  const labels = left.map(themeLabel);
+  const cv = h("canvas", { role: "img", "aria-label": "Something Wheel with " + left.length + " choices" });
+  const result = h("div", { class: "roller", "aria-live": "polite" });
+  const isOrg = !!S.adminToken;
+  const btn = isOrg ? h("button", { class: "btn gold spin-btn", disabled: S.themeSpinning, onclick: () => spinTheme(cv, btn, wk, left, result, idx) }, S.themeSpinning ? "Spinning…" : "Spin for Week " + (idx + 1)) : null;
+  const panel = h("section", { class: "panel" }, h("div", { class: "panel-head" }, h("div", null, h("h2", { text: "The Something Wheel" }),
+    h("p", { class: "sub", text: "Week " + (idx + 1) + "'s theme hasn't been picked yet. The wheel decides" + (wk.date ? ", before " + fmtDate(wk.date) : "") + ". Themes already used drop off, so every week is different." })),
+    h("span", { class: "tag next", text: "Week " + (idx + 1) + (wk.date ? " · " + fmtDate(wk.date) : "") })),
+    h("div", { class: "wheel-wrap" },
+      h("div", { class: "wheel-box" }, h("span", { class: "pointer", "aria-hidden": "true" }), cv, h("div", { class: "hub hub-text" }, h("span", { text: "Some­thing…" }))),
+      btn || h("p", { class: "hint", text: "The organizer spins the wheel. Check back here to see this week's theme!" }), result),
+    h("div", { class: "sugg theme-list" }, left.map(o => h("span", { class: "chip-lite", text: o }))));
+  requestAnimationFrame(() => drawWheel(cv, labels, S.themeRot || 0));
   return panel;
+}
+async function spinTheme(cv, btn, wk, left, result, idx) {
+  if (S.themeSpinning) return;
+  S.themeSpinning = true; btn.disabled = true; btn.textContent = "Spinning…"; S.rolling = true;
+  const labels = left.map(themeLabel);
+  let idle = true, rot = S.themeRot || 0, last = performance.now();
+  const idleSpin = now => { if (!idle) return; rot += (now - last) / 1000 * 7; last = now; drawWheel(cv, labels, rot); requestAnimationFrame(idleSpin); };
+  requestAnimationFrame(idleSpin);
+  let res;
+  try { res = await api("spinTheme", { weekId: wk.id }, true); }
+  catch (e) { idle = false; S.themeRot = rot % (2 * Math.PI); S.rolling = false; S.themeSpinning = false; toast(e.message, 5500); render(); return; }
+  idle = false; S.themeRot = rot % (2 * Math.PI);
+  let list = left.slice(); let k = list.findIndex(o => o.toLowerCase() === String(res.theme).toLowerCase());
+  if (k < 0) { list = list.concat(res.theme); k = list.length - 1; }
+  animateWheel(cv, list.map(themeLabel), k, () => {
+    result.textContent = res.theme;
+    setTimeout(async () => { S.rolling = false; S.themeSpinning = false; await refresh(true); toast("Week " + (idx + 1) + ": " + res.theme + "!", 5000); }, 1800);
+  }, "themeRot");
+}
+function viewThemeChoices(A) {
+  if (!S.themeDraft || !S.themeDirty) S.themeDraft = (A.settings.themeOptions || []).slice();
+  const td = S.themeDraft;
+  const list = h("div", { class: "sugg" }, td.map((o, i) => h("span", { class: "chip-lite" }, o,
+    h("button", { class: "chip-x", "aria-label": "Remove " + o, onclick: () => { td.splice(i, 1); S.themeDirty = true; render(); } }, "✕"))));
+  const inp = h("input", { type: "text", id: "newTheme", maxlength: "40", placeholder: "e.g. Something Green", style: "max-width:280px",
+    onkeydown: e => { if (e.key === "Enter") { e.preventDefault(); add(); } } });
+  const add = () => { let v = inp.value.trim(); if (!v) return; if (!/^something\b/i.test(v)) v = "Something " + v;
+    if (td.some(o => o.toLowerCase() === v.toLowerCase())) return toast("That choice is already on the wheel.");
+    td.push(v); S.themeDirty = true; render(); setTimeout(() => { const n = document.getElementById("newTheme"); if (n) n.focus(); }, 0); };
+  return h("section", { class: "panel" }, h("div", { class: "panel-head" }, h("div", null, h("h2", { text: "Something Wheel choices" }),
+    h("p", { class: "sub", text: "These are the themes on the Something Wheel. To pick a week's theme, open the Weekly Gifts tab while signed in as organizer and spin, any time before that week's due date." })),
+    h("span", { class: "tag", text: td.length + " choices" })),
+    list,
+    h("div", { class: "row" }, inp, h("button", { class: "btn", onclick: add }, "+ Add choice"), h("span", { class: "spacer" }),
+      S.themeDirty ? h("button", { class: "btn", onclick: () => { S.themeDirty = false; S.themeDraft = null; render(); } }, "Discard") : null,
+      h("button", { class: "btn primary", disabled: !S.themeDirty, onclick: async () => { const r = await act("saveThemeOptions", { options: td }, "Something Wheel choices saved."); if (r) { S.themeDirty = false; S.themeDraft = null; refresh(true); } } }, S.themeDirty ? "Save choices" : "Saved"),
+      h("button", { class: "btn", onclick: () => { location.hash = "weekly-gifts"; } }, "Go spin →")));
 }
 
 /* ---- Wish wall ---- */
@@ -620,7 +684,7 @@ function viewAdmin() {
   const rows = h("div", { style: "display:grid;gap:10px" });
   wd.forEach((w, i) => rows.append(h("div", { class: "week-edit" },
     h("span", { class: "wk", text: "Week " + (i + 1) }),
-    h("input", { type: "text", id: "wt-" + w.id, "aria-label": "Week " + (i + 1) + " theme", value: w.theme || "", maxlength: "60", placeholder: "Something…", oninput: e => { w.theme = e.target.value; markW(); } }),
+    h("input", { type: "text", id: "wt-" + w.id, "aria-label": "Week " + (i + 1) + " theme", value: w.theme || "", maxlength: "60", placeholder: "Blank = spin on the Something Wheel", oninput: e => { w.theme = e.target.value; markW(); } }),
     h("input", { type: "date", id: "wd-" + w.id, "aria-label": "Week " + (i + 1) + " due date", value: w.date || "", oninput: e => { w.date = e.target.value; markW(); } }),
     h("input", { type: "text", id: "wn-" + w.id, "aria-label": "Week " + (i + 1) + " note", value: w.note || "", maxlength: "120", placeholder: "Note (optional)", oninput: e => { w.note = e.target.value; markW(); } }),
     h("button", { class: "btn icon danger", "aria-label": "Delete week " + (i + 1), title: "Delete week", onclick: () => { wd.splice(i, 1); markW(); render(); } }, "✕"))));
@@ -632,23 +696,23 @@ function viewAdmin() {
   };
   const used = new Set(wd.map(w => (w.theme || "").toLowerCase()));
   out.push(h("section", { class: "panel" }, h("div", { class: "panel-head" }, h("div", null, h("h2", { text: "Weekly gift themes" }),
-    h("p", { class: "sub", text: "Set the “Something…” theme and due date for each week. Staff see them in Weekly Gifts after you save." }))),
+    h("p", { class: "sub", text: "Add each week with its due date. Leave the theme blank to pick it on the Something Wheel (Weekly Gifts tab) before the due date, or type a theme to set it yourself." }))),
     rows,
-    h("div", { class: "field" }, h("span", { class: "legend" }, "Quick add"), h("div", { class: "sugg" }, SUGGESTIONS.filter(s => !used.has(s.toLowerCase())).map(s => h("button", { onclick: () => addWeek(s) }, "+ " + s)))),
-    h("div", { class: "row" }, h("button", { class: "btn", onclick: () => addWeek("") }, "+ Add blank week"), h("span", { class: "spacer" }),
+    h("div", { class: "field" }, h("span", { class: "legend" }, "Or set a theme yourself"), h("div", { class: "sugg" }, (A.settings.themeOptions || []).filter(s => !used.has(s.toLowerCase())).map(s => h("button", { onclick: () => addWeek(s) }, "+ " + s)))),
+    h("div", { class: "row" }, h("button", { class: "btn gold", onclick: () => addWeek("") }, "+ Add a week to spin"), h("span", { class: "spacer" }),
       S.weeksDirty ? h("button", { class: "btn", onclick: () => { S.weeksDirty = false; S.weeksDraft = null; render(); } }, "Discard") : null,
       h("button", { class: "btn primary", disabled: !S.weeksDirty, onclick: async () => {
-        if (wd.some(w => !(w.theme || "").trim())) return toast("Give every week a theme, or delete the empty one.");
         const j = await act("saveWeeks", { weeks: wd }, "Weekly themes saved. Staff can see them now."); if (j) { S.weeksDirty = false; S.weeksDraft = null; render(); }
       } }, S.weeksDirty ? "Save weekly themes" : "Saved"))));
 
   if (st.round && weeks.length) out.push(h("section", { class: "panel" }, h("h2", { text: "Gift progress" }), h("p", { class: "sub", text: "How many staff marked each week's gift as given." }),
     h("div", { class: "tablewrap" }, h("table", null, h("thead", null, h("tr", null, h("th", { text: "Week" }), h("th", { text: "Theme" }), h("th", { text: "Given" }))),
       h("tbody", null, weeks.map((w, i) => { const n = A.participants.filter(p => p.given && p.given[w.id]).length;
-        return h("tr", null, h("td", { text: "Week " + (i + 1) }), h("td", { text: w.theme }), h("td", { class: "num", text: n + " of " + ids.length })); }))))));
+        return h("tr", null, h("td", { text: "Week " + (i + 1) }), h("td", { text: w.theme || "To be spun" }), h("td", { class: "num", text: n + " of " + ids.length })); }))))));
 
   if (!S.setDraft || !S.setDirty) S.setDraft = { eventName: st.eventName || "Online Manito & Manita", partyDate: st.partyDate || "", budget: st.budget === "" || st.budget == null ? "" : String(st.budget), registrationOpen: st.registrationOpen !== false };
   const sd = S.setDraft; const markS = () => { S.setDirty = true; };
+  out.push(viewThemeChoices(A));
   out.push(viewSlidesAdmin(A));
 
   out.push(h("section", { class: "panel" }, h("h2", { text: "Event settings" }),

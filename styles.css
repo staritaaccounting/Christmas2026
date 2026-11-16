@@ -266,3 +266,9 @@ td .row .btn { white-space: nowrap; }
 
 .fb-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
 .fb-strip img { height: 72px; border-radius: 8px; flex: 0 0 auto; }
+
+.hub-text { font-family: var(--display); color: var(--navy); font-size: clamp(.8rem, 2.6vw, 1.05rem); text-align: center; line-height: 1.1; padding: 4px; }
+.theme.spin-me { color: var(--ember); }
+.chip-lite { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; background: #fff7e0; border: 1px solid #f2d593; color: #6a4a00; font-size: .9rem; font-weight: 600; }
+.sugg .chip-x, .chip-x { border: 0; background: transparent; border-radius: 50%; color: #9a5a00; cursor: pointer; font-weight: 700; padding: 0 2px; }
+.theme-list { justify-content: center; }
