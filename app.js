@@ -1,4 +1,4 @@
-/* Sta. Rita Accounting Office — Christmas Online Manito & Manita (frontend)
+/* Sta. Rita Accounting Office — Christmas Online Monito & Monita (frontend)
    Talks to the Google Apps Script backend set in config.js. */
 "use strict";
 
@@ -42,7 +42,7 @@ function fmtDate(d) {
   try { return new Date(d + "T12:00:00+08:00").toLocaleDateString("en-PH", { timeZone: TZ, weekday: "short", month: "short", day: "numeric" }); } catch (e) { return d; }
 }
 function daysUntil(d) { if (!d) return null; return Math.round((new Date(d + "T00:00:00+08:00") - new Date(todayStr() + "T00:00:00+08:00")) / 86400000); }
-const roleOf = g => g === "F" ? "Manita" : "Manito";
+const roleOf = g => g === "F" ? "Monita" : "Monito";
 /* Animated avatar: each sprite holds 3 frames (eyes open, blinking, happy smiling eyes). */
 function avatarEl(n, size, label) {
   const k = Math.floor(Number(n));
@@ -90,7 +90,7 @@ function applyState(st) {
   S.participants = {}; S.order = [];
   (st.participants || []).forEach(p => { S.participants[p.id] = p; S.order.push(p.id); });
   S.me = st.me || null; S.myPick = st.myPick || null; S.wheelIds = st.wheel || []; S.canSpin = !!st.canSpin;
-  S.revealed = !!st.revealed; S.reveal = st.reveal || []; S.carousel = st.carousel || []; S.themeOptions = (st.settings && st.settings.themeOptions) || [];
+  S.revealed = !!st.revealed; S.reveal = st.reveal || []; S.carousel = st.carousel || []; S.themeOptions = (st.settings && st.settings.themeOptions) || []; S.swap = st.swap || { week: null, weeks: [] };
   if (S.me && !S.dirtyProfile) S.draft = null;
   S.loaded = true;
 }
@@ -149,7 +149,7 @@ function renderTabs() {
 }
 function renderHeader() {
   const st = S.settings || {};
-  document.getElementById("evtTitle").textContent = st.eventName || "Online Manito & Manita";
+  document.getElementById("evtTitle").textContent = st.eventName || "Online Monito & Monita";
   const chips = document.getElementById("headChips"); chips.replaceChildren();
   if (!S.loaded) return;
   chips.append(h("span", { class: "chip" }, S.joined + " staff joined"));
@@ -219,7 +219,7 @@ function viewHome() {
   let lead, cta;
   if (S.revealed) { lead = "It\u2019s the Christmas party! Real names are unsealed. See who gave to whom."; cta = h("button", { class: "btn gold", onclick: go("big-reveal") }, "See the big reveal"); }
   else if (!mine) { lead = "Join with your alias and wish list, then spin the wheel to find out who you'll surprise every week until the reveal party."; cta = h("button", { class: "btn gold", onclick: go("my-profile") }, "Join or sign in"); }
-  else if (pick) { lead = "You've spun the wheel. Check your Manito or Manita's wish list and this week's theme."; cta = h("button", { class: "btn gold", onclick: go("spin-wheel") }, "See who you picked"); }
+  else if (pick) { lead = "You've spun the wheel. Check your Monito or Monita's wish list and this week's theme."; cta = h("button", { class: "btn gold", onclick: go("spin-wheel") }, "See who you picked"); }
   else if (st.wheelOpen) { lead = "The wheel is open! Everyone who joined is on it except you. One spin each."; cta = h("button", { class: "btn gold", onclick: go("spin-wheel") }, "Spin the wheel"); }
   else { lead = "You're in. The organizer will open the wheel once everyone has joined. Keep your wish list up to date meanwhile."; cta = h("button", { class: "btn gold", onclick: go("my-profile") }, "Update my wish list"); }
   const hero = h("section", { class: "years" }, h("h2", { class: "years-title", text: "SRAO through the Years" }), heroCarousel());
@@ -234,9 +234,9 @@ function viewHome() {
     h("div", { class: "stat" }, h("b", { style: "font-size:1.25rem;line-height:1.3;padding:6px 0", text: nx ? (nx.theme || "Spin soon") : "TBA" }), h("span", { text: nx && nx.date ? "next gift · " + fmtDate(nx.date) : "next gift theme" })));
   const how = h("section", { class: "panel" }, h("h2", { text: "How it works" }), h("div", { class: "steps" },
     h("div", { class: "step" }, h("span", { class: "num" }, "1"), h("div", null, h("b", { text: "Join" }), h("span", { text: "Create a username and PIN, then enter your name, a secret alias, gender, a clue about yourself and your wish list." }))),
-    h("div", { class: "step" }, h("span", { class: "num" }, "2"), h("div", null, h("b", { text: "Spin the wheel" }), h("span", { text: "Everyone who joined is on the wheel by alias, except you. Where it stops is your Manito or Manita: you get their alias and a clue." }))),
+    h("div", { class: "step" }, h("span", { class: "num" }, "2"), h("div", null, h("b", { text: "Spin the wheel" }), h("span", { text: "Everyone who joined is on the wheel by alias, except you. Where it stops is your Monito or Monita: you get their alias and a clue." }))),
     h("div", { class: "step" }, h("span", { class: "num" }, "3"), h("div", null, h("b", { text: "Give every week" }), h("span", { text: "Follow each week's “Something…” theme, sign gifts with your alias, and reveal yourself at the party." })))));
-  return [hero, bar, stats, how];
+  return [hero, bar, swapReminder(), stats, how];
 }
 
 /* ---- Profile, join and sign-in ---- */
@@ -255,12 +255,12 @@ function viewProfile() {
   const d = S.draft;
   panel.append(h("div", { class: "panel-head" },
     h("div", null, h("h2", { text: mine ? "Your profile & wish list" : "Join the exchange" }),
-      h("p", { class: "sub", text: "Your alias is your codename: sign your weekly gifts with it so your Manito or Manita never finds out who you are until the party." })),
+      h("p", { class: "sub", text: "Your alias is your codename: sign your weekly gifts with it so your Monito or Monita never finds out who you are until the party." })),
     mine ? h("div", { class: "row" }, avatarEl(mine.avatar, 44), h("span", { class: "tag " + (mine.gender === "F" ? "f" : "") }, "Signed in as " + mine.username), h("button", { class: "btn", onclick: signOut }, "Sign out"))
       : h("div", { class: "seg", role: "group", "aria-label": "Join or sign in" },
         h("button", { "aria-pressed": "true" }, "I'm new"), h("button", { "aria-pressed": "false", onclick: () => { S.authMode = "login"; render(); } }, "I already joined"))));
   if (!mine && st.registrationOpen === false) { panel.append(h("div", { class: "notice warn", text: "Registration is closed. Ask the organizer if you still want to join." })); return panel; }
-  if (mine && S.myPick) panel.append(h("div", { class: "notice", text: "You've spun the wheel. You can still update your wish list; your Manito or Manita sees the changes." }));
+  if (mine && S.myPick) panel.append(h("div", { class: "notice", text: "You've spun the wheel. You can still update your wish list; your Monito or Monita sees the changes." }));
   const mark = () => { S.dirtyProfile = true; };
   if (!mine) panel.append(h("div", { class: "grid2" },
     h("div", { class: "field" }, h("label", { for: "fUser" }, "Username"),
@@ -277,7 +277,7 @@ function viewProfile() {
       h("input", { type: "text", id: "fAlias", value: d.alias, maxlength: "30", placeholder: "e.g. Ledger Elf", oninput: e => { d.alias = e.target.value; mark(); } }),
       h("span", { class: "hint", text: "Shown on the Wish Wall. Keep it fun and secret." }))));
   const opts = h("div", { class: "gender", role: "radiogroup", "aria-labelledby": "gLbl" });
-  [["M", "Male", "You'll be called a Manito", "m"], ["F", "Female", "You'll be called a Manita", "f"]].forEach(([v, lab, sub, cls]) => {
+  [["M", "Male", "You'll be called a Monito", "m"], ["F", "Female", "You'll be called a Monita", "f"]].forEach(([v, lab, sub, cls]) => {
     opts.append(h("label", { class: cls + (d.gender === v ? " on" : ""), for: "g" + v },
       h("input", { type: "radio", name: "gender", id: "g" + v, value: v, checked: d.gender === v, onchange: () => { d.gender = v; mark(); opts.querySelectorAll("label").forEach(l => l.classList.toggle("on", l.htmlFor === "g" + v)); } }),
       h("span", null, h("b", { text: lab }), h("small", { text: sub }))));
@@ -308,7 +308,7 @@ function viewProfile() {
     h("textarea", { id: "fNotes", maxlength: "500", placeholder: "e.g. Shirt size M, loves blue, allergic to peanuts", oninput: e => { d.notes = e.target.value; mark(); } }, d.notes || "")));
 
   const pf = h("div", { class: "field" }, h("span", { class: "legend" }, "Wish list sample photos"),
-    h("span", { class: "hint", text: "Up to " + MAX_PHOTOS + " pictures of items you'd like, so your Manito or Manita knows exactly what to look for." }));
+    h("span", { class: "hint", text: "Up to " + MAX_PHOTOS + " pictures of items you'd like, so your Monito or Monita knows exactly what to look for." }));
   if (mine) {
     const strip = h("div", { class: "photos" });
     (mine.photos || []).forEach((id, i) => strip.append(h("div", { class: "ph" },
@@ -348,7 +348,7 @@ async function saveProfile() {
   if (!payload.alias) return toast("Please choose an alias.");
   if (!payload.gender) return toast("Please select your gender.");
   if (!payload.avatar) return toast("Pick an avatar for your profile.");
-  if (!payload.clue) return toast("Give a clue about who you are, so your Manito or Manita can guess.");
+  if (!payload.clue) return toast("Give a clue about who you are, so your Monito or Monita can guess.");
   if (!payload.wishes.length) return toast("Add at least one wish to your list.");
   const btn = document.getElementById("saveProfile"); if (btn) btn.disabled = true;
   try {
@@ -478,14 +478,18 @@ async function spin(cv, btn) {
 }
 function revealCard(panel, mine, pick) {
   const rec = S.participants[pick];
-  if (!rec) { panel.append(h("h2", { text: "Your Manito / Manita" }), h("div", { class: "notice warn", text: "The person you picked has left the exchange. The organizer will sort out your pick shortly." })); return panel; }
+  if (!rec) { panel.append(h("h2", { text: "Your Monito / Monita" }), h("div", { class: "notice warn", text: "The person you picked has left the exchange. The organizer will sort out your pick shortly." })); return panel; }
   panel.append(h("div", { class: "panel-head" },
     h("div", null, h("span", { class: "tag " + (rec.gender === "F" ? "f" : "") }, "Your " + roleOf(rec.gender)),
       h("div", { class: "big-name", style: "margin-top:8px", text: rec.alias }),
       rec.name ? h("p", { class: "sub" }, "Revealed: ", h("b", { text: rec.name })) : h("p", { class: "sub", text: "Their real name stays sealed until the Christmas party." })),
     avatarEl(rec.avatar, 120, rec.alias + "'s avatar")));
   panel.append(h("div", { class: "clue" }, h("span", { class: "clue-k", text: "Clue: who " + (rec.gender === "F" ? "she" : "he") + " is" }), h("p", { text: rec.clue || "No clue given yet." })));
-  panel.append(h("div", { class: "notice" }, "Keep it secret! Sign your gifts as ", h("b", { text: "“" + mine.alias + "”" }), " and address them to ", h("b", { text: "“" + rec.alias + "”" }), "."));
+  const sw = S.swap && S.swap.week;
+  panel.append(h("div", { class: "notice" }, "Keep it secret! Sign your gifts as ", h("b", { text: "“" + mine.alias + "”" }), sw ? " and, this Codename Swap week, address them to the codename below." : [" and address them to ", h("b", { text: "“" + rec.alias + "”" }), "."]));
+  if (sw) { const cn = S.swap.forPick;
+    panel.append(h("div", { class: "clue swap" }, h("span", { class: "clue-k", text: "Codename Swap · Week " + sw.number + (sw.date ? " · due " + fmtDate(sw.date) : "") }),
+      h("p", null, cn ? ["This week, label your gift for ", rec.alias, ": ", h("b", { text: "“" + cn + "”" })] : rec.alias + " hasn't spun their codename yet. Check Weekly Gifts before you wrap your gift."))); }
   const weeks = sortedWeeks(S.weeks); const stOf = weekStatus(weeks); const nx = weeks.find(w => stOf(w) === "next");
   if (nx) panel.append(h("div", { class: "notice good" }, "Next gift: ", h("b", { text: nx.theme || "theme to be spun on the Something Wheel" }), nx.date ? " · due " + fmtDate(nx.date) : "", nx.note ? " · " + nx.note : ""));
   panel.append(h("div", { class: "grid2" },
@@ -522,7 +526,7 @@ function viewReveal() {
 function viewWeeks() {
   const weeks = sortedWeeks(S.weeks); const stOf = weekStatus(weeks);
   const panel = h("section", { class: "panel" }, h("div", { class: "panel-head" }, h("div", null, h("h2", { text: "Weekly gift themes" }),
-    h("p", { class: "sub", text: "Each week has a “Something…” theme, picked on the Something Wheel before the due date. Leave your gift for your Manito or Manita by the due date, signed with your alias." }))));
+    h("p", { class: "sub", text: "Each week has a “Something…” theme, picked on the Something Wheel before the due date. Leave your gift for your Monito or Monita by the due date, signed with your alias." }))));
   if (!weeks.length) { panel.append(h("p", { class: "empty", text: "The organizer hasn't posted the weekly themes yet." })); return panel; }
   const given = (S.me && S.me.given) || {};
   const sw = themeWheelPanel(weeks);
@@ -531,10 +535,11 @@ function viewWeeks() {
       h("div", { class: "wk" }, "Week " + (i + 1), h("small", { text: w.date ? fmtDate(w.date) : "Date to follow" })),
       h("div", null, w.theme ? h("div", { class: "theme", text: w.theme }) : h("div", { class: "theme spin-me", text: s === "past" ? "No theme" : "🎡 Spin to reveal" }), w.note ? h("div", { class: "hint", text: w.note }) : null),
       h("div", { class: "row" },
+        w.swap === "yes" ? h("span", { class: "tag swap", text: "🔁 Codename Swap" }) : null,
         h("span", { class: "tag " + (s === "past" ? "done" : s), text: s === "past" ? "Done" : s === "next" ? (w.date === todayStr() ? "Today" : "Up next") : "Upcoming" }),
         S.myPick ? h("label", { class: "switch", title: "Only the organizer sees this count" },
           h("input", { type: "checkbox", id: "gv-" + w.id, checked: !!given[w.id], onchange: e => act("markGiven", { weekId: w.id, value: e.target.checked }, e.target.checked ? "Marked as given. Nice one!" : "Unmarked.") }), "Gift given") : null)); })));
-  return sw ? [sw, panel] : panel;
+  return [swapPanel(), sw, panel];
 }
 
 /* ---- Something Wheel: spin each week's theme before its due date ---- */
@@ -600,17 +605,105 @@ function viewThemeChoices(A) {
       h("button", { class: "btn", onclick: () => { location.hash = "weekly-gifts"; } }, "Go spin →")));
 }
 
+/* ---- Codename Swap ---- */
+/* Landing page: just a reminder during a Codename Swap week. */
+function swapReminder() {
+  const sw = S.swap || {}; const wk = sw.week;
+  if (!wk) return null;
+  return h("section", { class: "panel swap-reminder" },
+    h("div", null, h("span", { class: "tag swap", text: "🔁 Codename Swap · Week " + wk.number + (wk.date ? " · due " + fmtDate(wk.date) : "") }),
+      h("p", { class: "sub", style: "margin-top:8px", text: !S.me ? "This week everyone gets a secret codename. Sign in, then spin yours in Weekly Gifts."
+        : sw.mine ? "You've spun your codename for this week. Find it, and your Monito or Monita's codename, in Weekly Gifts."
+        : "Reminder: this week everyone gets a secret codename. Spin yours in Weekly Gifts before " + (wk.date ? fmtDate(wk.date) : "the due date") + "." })),
+    h("button", { class: "btn " + (S.me && !sw.mine ? "gold" : ""), onclick: () => { location.hash = "weekly-gifts"; } }, S.me && !sw.mine ? "Spin my codename" : "Go to Weekly Gifts"));
+}
+/* Weekly Gifts: spin your codename, see your own and your Monito/Monita's. Nobody else's is shown. */
+function swapPanel() {
+  const sw = S.swap || {}; const wk = sw.week;
+  if (!wk) return null;
+  const P = S.participants;
+  const panel = h("section", { class: "panel swap-panel" },
+    h("div", { class: "panel-head" }, h("div", null,
+      h("span", { class: "tag swap", text: "🔁 Codename Swap · Week " + wk.number + (wk.date ? " · due " + fmtDate(wk.date) : "") }),
+      h("h2", { style: "margin-top:8px", text: "Spin your secret codename" }),
+      h("p", { class: "sub", text: "This week everyone gets a new codename from the wheel, and the gift you receive will be labeled with it. Codenames are private: you see only your own, and the codename of the person you're giving to." }))));
+  if (!S.me) { panel.append(h("div", { class: "notice", text: "Sign in to spin your codename for this week." })); return panel; }
+  if (sw.mine) panel.append(h("div", { class: "clue swap" }, h("span", { class: "clue-k", text: "Your codename this week" }), h("p", null, h("b", { text: sw.mine }), " · watch for a gift labeled with it!")));
+  else {
+    const left = sw.left || [];
+    const cv = h("canvas", { role: "img", "aria-label": "Codename wheel with " + left.length + " codenames" });
+    const out = h("div", { class: "roller", "aria-live": "polite" });
+    const btn = h("button", { class: "btn gold spin-btn", disabled: S.codeSpinning || !left.length, onclick: () => spinCodename(cv, btn, left, out) }, S.codeSpinning ? "Spinning…" : "Spin my codename");
+    panel.append(h("div", { class: "wheel-wrap" },
+      h("div", { class: "wheel-box sm" }, h("span", { class: "pointer", "aria-hidden": "true" }), cv, h("div", { class: "hub hub-text" }, h("span", { text: "Code\u00adname" }))), btn, out));
+    requestAnimationFrame(() => drawWheel(cv, left.map(c => c.length > 14 ? c.slice(0, 13) + "…" : c), S.codeRot || 0));
+  }
+  if (S.myPick && P[S.myPick]) panel.append(h("div", { class: "notice good" }, "🎁 Your gift for ", h("b", { text: P[S.myPick].alias }), " this week: ",
+    sw.forPick ? h("b", { text: "label it “" + sw.forPick + "”" }) : "they haven't spun their codename yet. Check back here before you wrap it."));
+  else if (!S.myPick) panel.append(h("p", { class: "hint", text: "Once you've spun your Monito or Monita, their codename for this week shows here." }));
+  return panel;
+}
+async function spinCodename(cv, btn, left, out) {
+  if (S.codeSpinning) return;
+  S.codeSpinning = true; btn.disabled = true; btn.textContent = "Spinning…"; S.rolling = true;
+  const lab = c => c.length > 14 ? c.slice(0, 13) + "…" : c;
+  let idle = true, rot = S.codeRot || 0, last = performance.now();
+  const idleSpin = now => { if (!idle) return; rot += (now - last) / 1000 * 7; last = now; drawWheel(cv, left.map(lab), rot); requestAnimationFrame(idleSpin); };
+  requestAnimationFrame(idleSpin);
+  let res;
+  try { res = await api("spinCodename", null, true); }
+  catch (e) { idle = false; S.codeRot = rot % (2 * Math.PI); S.rolling = false; S.codeSpinning = false; toast(e.message, 5500); render(); return; }
+  idle = false; S.codeRot = rot % (2 * Math.PI);
+  let list = left.slice(); let k = list.findIndex(c => c.toLowerCase() === String(res.codename).toLowerCase());
+  if (k < 0) { list = list.concat(res.codename); k = list.length - 1; }
+  animateWheel(cv, list.map(lab), k, () => {
+    out.textContent = res.codename;
+    setTimeout(() => { S.rolling = false; S.codeSpinning = false; render(); toast("Your codename this week is " + res.codename + "!", 5000); }, 1800);
+  }, "codeRot");
+}
+function viewSwapAdmin(A) {
+  const sw = A.swap || {}; const wk = sw.week;
+  const P = {}; A.participants.forEach(p => { P[p.id] = p; });
+  const panel = h("section", { class: "panel" }, h("div", { class: "panel-head" }, h("div", null, h("h2", { text: "Codename Swap" }),
+    h("p", { class: "sub", text: "In a Codename Swap week, each person spins a codename in Weekly Gifts and receives gifts labeled with it. Staff see only their own codename and their Monito/Monita\u2019s; this full list is for you only. Mark swap weeks in Weekly gift themes below." }))));
+  if (!wk) { panel.append(h("p", { class: "hint", text: (sw.weeks || []).length ? "No Codename Swap week is coming up. The marked swap weeks have passed." : "No weeks are marked as Codename Swap yet." })); }
+  else {
+    const byUser = {}; (sw.board || []).forEach(b => { byUser[b.userId] = b.codename; });
+    const waiting = A.participants.filter(p => !byUser[p.id]);
+    panel.append(h("div", { class: "notice good", text: "Week " + wk.number + (wk.date ? " (due " + fmtDate(wk.date) + ")" : "") + " is the current Codename Swap. " + (A.participants.length - waiting.length) + " of " + A.participants.length + " have spun. Staff spin in Weekly Gifts; the home page shows a reminder." }));
+    if (waiting.length) panel.append(h("p", { class: "hint" }, "Still to spin: ", waiting.map(p => p.alias).join(", ")),
+      h("div", null, h("button", { class: "btn", onclick: async () => { if (await modal("Spin for everyone left?", "Gives a random codename to the " + waiting.length + " people who haven't spun this week.", "Spin for them")) act("assignCodenames", null, "Everyone has a codename this week."); } }, "Spin codenames for everyone left")));
+    const rows = A.participants.filter(p => byUser[p.id]).sort((a, b) => a.alias.localeCompare(b.alias));
+    if (rows.length) panel.append(h("div", { class: "tablewrap" }, h("table", null, h("thead", null, h("tr", null, h("th", { text: "Alias" }), h("th", { text: "Codename this week" }), h("th", { text: "" }))),
+      h("tbody", null, rows.map(p => h("tr", null, h("td", null, h("div", { class: "row", style: "flex-wrap:nowrap;gap:8px" }, avatarEl(p.avatar, 28), p.alias)), h("td", { text: byUser[p.id] }),
+        h("td", null, h("button", { class: "btn sm", onclick: async () => { if (await modal("Let " + p.alias + " spin again?", "Their codename “" + byUser[p.id] + "” is cleared and they can spin a new one.", "Clear codename")) act("resetCodename", { id: p.id }, p.alias + " can spin again."); } }, "Let them re-spin"))))))));
+  }
+  if (!S.codeDraft || !S.codeDirty) S.codeDraft = ((sw.options) || []).slice();
+  const cd = S.codeDraft;
+  const inp = h("input", { type: "text", id: "newCode", maxlength: "30", placeholder: "e.g. Christmas Lantern", style: "max-width:260px", onkeydown: e => { if (e.key === "Enter") { e.preventDefault(); add(); } } });
+  const add = () => { const v = inp.value.trim(); if (!v) return; if (cd.some(o => o.toLowerCase() === v.toLowerCase())) return toast("That codename is already on the wheel."); cd.push(v); S.codeDirty = true; render(); setTimeout(() => { const n = document.getElementById("newCode"); if (n) n.focus(); }, 0); };
+  panel.append(h("details", { class: "code-opts" }, h("summary", null, "Codename wheel choices (" + cd.length + ")"),
+    h("p", { class: "hint", text: "No two people get the same codename in a week. Keep at least as many choices as staff; if they run out, numbers are added (for example “Parol 2”)." }),
+    h("div", { class: "sugg" }, cd.map((o, i) => h("span", { class: "chip-lite" }, o, h("button", { class: "chip-x", "aria-label": "Remove " + o, onclick: () => { cd.splice(i, 1); S.codeDirty = true; render(); } }, "✕")))),
+    h("div", { class: "row" }, inp, h("button", { class: "btn", onclick: add }, "+ Add codename"), h("span", { class: "spacer" }),
+      S.codeDirty ? h("button", { class: "btn", onclick: () => { S.codeDirty = false; S.codeDraft = null; render(); } }, "Discard") : null,
+      h("button", { class: "btn primary", disabled: !S.codeDirty, onclick: async () => { const r = await act("saveCodenameOptions", { options: cd }, "Codename choices saved."); if (r) { S.codeDirty = false; S.codeDraft = null; render(); } } }, S.codeDirty ? "Save codenames" : "Saved"))));
+  if (S.codeDirty) panel.querySelector("details").open = true;
+  return panel;
+}
+
 /* ---- Wish wall ---- */
 function viewWall() {
   const ids = S.order.slice().sort((a, b) => (S.participants[a].alias || "").localeCompare(S.participants[b].alias || ""));
   const panel = h("section", { class: "panel" }, h("div", { class: "panel-head" },
-    h("div", null, h("h2", { text: "Wish Wall" }), h("p", { class: "sub", text: "Everyone's wish lists, by codename only. Real names stay hidden so the fun lasts until the party." }))));
+    h("div", null, h("h2", { text: "Wish Wall" }), h("p", { class: "sub", text: "Who's in, and how many wishes each person listed. Wish lists are private: you'll see the full list of the person you land on when you Spin the Wheel." }))));
   if (!ids.length) { panel.append(h("p", { class: "empty", text: "No one has joined yet. Be the first!" })); return panel; }
   panel.append(h("div", { class: "cards" }, ids.map(id => { const p = S.participants[id];
     return h("article", { class: "person " + (p.gender === "F" ? "f" : "") },
       h("div", { class: "row" }, avatarEl(p.avatar, 56, p.alias + "'s avatar"), h("span", { class: "alias", text: p.alias }), h("span", { class: "spacer" }), h("span", { class: "tag " + (p.gender === "F" ? "f" : ""), text: roleOf(p.gender) })),
       S.me && id === S.me.id ? h("span", { class: "hint", text: "This is you" }) : null,
-      wishList(p), p.notes ? h("div", { class: "note", text: p.notes }) : null, photoStrip(p.photos)); })));
+      h("div", { class: "wish-count" }, h("b", { text: String(p.wishCount || 0) }), h("span", { text: (p.wishCount === 1 ? "wish" : "wishes") + " on the list" })),
+      h("span", { class: "hint", text: S.myPick === id ? "🎁 You picked them. See their full list in Spin the Wheel." : "🔒 List visible only to whoever spins them" })); })));
   return panel;
 }
 
@@ -630,10 +723,10 @@ function viewAdmin() {
         h("button", { class: "btn primary", type: "submit" }, "Sign in")));
   }
   const A = S.admin;
+  if (!A) { if (!S.adminLoading) { S.adminLoading = true; api("adminState").catch(e => toast(e.message, 5000)).finally(() => { S.adminLoading = false; render(); }); } return h("div", { class: "panel" }, h("p", { class: "sub", text: "Loading the organizer dashboard…" })); }
   const sealed = !A.revealed;
   const lockNote = A.settings.partyDate ? "Sealed until " + fmtDate(A.settings.partyDate) : "Sealed until the party date";
   const who = p => p ? (p.name ? p.name + " (" + p.alias + ")" : p.alias) : "?";
-  if (!A) { if (!S.adminLoading) { S.adminLoading = true; api("adminState").catch(e => toast(e.message, 5000)).finally(() => { S.adminLoading = false; render(); }); } return h("div", { class: "panel" }, h("p", { class: "sub", text: "Loading the organizer dashboard…" })); }
   const P = {}; A.participants.forEach(p => { P[p.id] = p; });
   const ids = A.participants.map(p => p.id);
   const st = A.settings; const out = [];
@@ -646,8 +739,8 @@ function viewAdmin() {
       h("div", { class: "row" }, h("button", { class: "btn", onclick: () => act("adminState") }, "Refresh"), h("button", { class: "btn", onclick: () => { S.adminToken = null; S.admin = null; store.set("srao_admin", null); render(); } }, "Sign out"))),
     h("div", { class: "stats" },
       h("div", { class: "stat" }, h("b", { text: String(ids.length) }), h("span", { text: "staff joined" })),
-      h("div", { class: "stat" }, h("b", { text: String(males) }), h("span", { text: "Manito (male)" })),
-      h("div", { class: "stat" }, h("b", { text: String(ids.length - males) }), h("span", { text: "Manita (female)" })),
+      h("div", { class: "stat" }, h("b", { text: String(males) }), h("span", { text: "Monito (male)" })),
+      h("div", { class: "stat" }, h("b", { text: String(ids.length - males) }), h("span", { text: "Monita (female)" })),
       h("div", { class: "stat" }, h("b", { text: spunN + "/" + ids.length }), h("span", { text: "have a pick" })))));
 
   const draw = h("section", { class: "panel" }, h("div", { class: "panel-head" }, h("div", null, h("h2", { text: "Spin the Wheel" }),
@@ -660,7 +753,7 @@ function viewAdmin() {
     draw.append(h("div", { class: "notice good", text: "The wheel is open. " + spunN + " of " + ids.length + " staff have spun." }));
     if (A.pending.length) draw.append(h("p", { class: "hint" }, "Still to spin: ", A.pending.map(id => who(P[id])).join(", ")));
     draw.append(h("div", { class: "row" },
-      A.pending.length ? h("button", { class: "btn", onclick: async () => { if (await modal("Assign the rest?", "The wheel picks for the " + A.pending.length + " staff who haven't spun yet. Nobody gets their own name.", "Assign")) act("assignRest", null, "Done. Everyone now has a Manito or Manita."); } }, "Assign the rest automatically") : null,
+      A.pending.length ? h("button", { class: "btn", onclick: async () => { if (await modal("Assign the rest?", "The wheel picks for the " + A.pending.length + " staff who haven't spun yet. Nobody gets their own name.", "Assign")) act("assignRest", null, "Done. Everyone now has a Monito or Monita."); } }, "Assign the rest automatically") : null,
       h("button", { class: "btn", onclick: () => act("pauseWheel", null, "Wheel paused. Picks so far are kept.") }, "Pause the wheel")));
   }
   if (st.round && A.stuck.length) draw.append(h("div", { class: "notice warn" }, A.stuck.map(id => who(P[id])).join(", "), " can't spin because no names are left for them. ",
@@ -669,7 +762,7 @@ function viewAdmin() {
     draw.append(h("div", { class: "row" },
       h("button", { class: "btn", onclick: () => { S.showPairs = !S.showPairs; render(); } }, S.showPairs ? "Hide pairings" : "Show pairings"),
       h("span", { class: "spacer" }),
-      h("button", { class: "btn danger", onclick: async () => { if (await modal("Reset the wheel?", "Every pick is erased and everyone spins again. Anyone who already saw their Manito or Manita will get a new one.", "Reset", true)) act("resetWheel", null, "The wheel is reset. Everyone can spin again."); } }, "Reset the wheel")));
+      h("button", { class: "btn danger", onclick: async () => { if (await modal("Reset the wheel?", "Every pick is erased and everyone spins again. Anyone who already saw their Monito or Monita will get a new one.", "Reset", true)) act("resetWheel", null, "The wheel is reset. Everyone can spin again."); } }, "Reset the wheel")));
     if (S.showPairs) {
       const rows = A.picks.filter(k => P[k.giverId]).sort((a, b) => P[a.giverId].alias.localeCompare(P[b.giverId].alias));
       draw.append(rows.length ? h("div", { class: "tablewrap" }, h("table", null, h("thead", null, h("tr", null, h("th", { text: "Giver" }), h("th", { text: "Gives to" }))),
@@ -687,6 +780,7 @@ function viewAdmin() {
     h("input", { type: "text", id: "wt-" + w.id, "aria-label": "Week " + (i + 1) + " theme", value: w.theme || "", maxlength: "60", placeholder: "Blank = spin on the Something Wheel", oninput: e => { w.theme = e.target.value; markW(); } }),
     h("input", { type: "date", id: "wd-" + w.id, "aria-label": "Week " + (i + 1) + " due date", value: w.date || "", oninput: e => { w.date = e.target.value; markW(); } }),
     h("input", { type: "text", id: "wn-" + w.id, "aria-label": "Week " + (i + 1) + " note", value: w.note || "", maxlength: "120", placeholder: "Note (optional)", oninput: e => { w.note = e.target.value; markW(); } }),
+    h("label", { class: "switch swap-toggle", for: "ws-" + w.id, title: "Codename Swap week" }, h("input", { type: "checkbox", id: "ws-" + w.id, checked: w.swap === "yes" || w.swap === true, onchange: e => { w.swap = e.target.checked ? "yes" : ""; markW(); } }), "Codename Swap"),
     h("button", { class: "btn icon danger", "aria-label": "Delete week " + (i + 1), title: "Delete week", onclick: () => { wd.splice(i, 1); markW(); render(); } }, "✕"))));
   if (!wd.length) rows.append(h("p", { class: "hint", text: "No weeks yet. Add the first one below or tap a suggestion." }));
   const addWeek = theme => {
@@ -699,7 +793,8 @@ function viewAdmin() {
     h("p", { class: "sub", text: "Add each week with its due date. Leave the theme blank to pick it on the Something Wheel (Weekly Gifts tab) before the due date, or type a theme to set it yourself." }))),
     rows,
     h("div", { class: "field" }, h("span", { class: "legend" }, "Or set a theme yourself"), h("div", { class: "sugg" }, (A.settings.themeOptions || []).filter(s => !used.has(s.toLowerCase())).map(s => h("button", { onclick: () => addWeek(s) }, "+ " + s)))),
-    h("div", { class: "row" }, h("button", { class: "btn gold", onclick: () => addWeek("") }, "+ Add a week to spin"), h("span", { class: "spacer" }),
+    h("div", { class: "row" }, h("button", { class: "btn gold", onclick: () => addWeek("") }, "+ Add a week to spin"),
+      h("button", { class: "btn", onclick: () => { const t = todayStr(); let n = 0; wd.forEach(w => { if (n < 3 && (!w.date || w.date >= t)) { w.swap = "yes"; n++; } }); if (!n) return toast("Add the upcoming weeks first."); markW(); render(); toast("The next " + n + " week" + (n === 1 ? "" : "s") + " are marked Codename Swap. Press Save to keep it."); } }, "🔁 Make the next 3 weeks Codename Swap"), h("span", { class: "spacer" }),
       S.weeksDirty ? h("button", { class: "btn", onclick: () => { S.weeksDirty = false; S.weeksDraft = null; render(); } }, "Discard") : null,
       h("button", { class: "btn primary", disabled: !S.weeksDirty, onclick: async () => {
         const j = await act("saveWeeks", { weeks: wd }, "Weekly themes saved. Staff can see them now."); if (j) { S.weeksDirty = false; S.weeksDraft = null; render(); }
@@ -710,8 +805,9 @@ function viewAdmin() {
       h("tbody", null, weeks.map((w, i) => { const n = A.participants.filter(p => p.given && p.given[w.id]).length;
         return h("tr", null, h("td", { text: "Week " + (i + 1) }), h("td", { text: w.theme || "To be spun" }), h("td", { class: "num", text: n + " of " + ids.length })); }))))));
 
-  if (!S.setDraft || !S.setDirty) S.setDraft = { eventName: st.eventName || "Online Manito & Manita", partyDate: st.partyDate || "", budget: st.budget === "" || st.budget == null ? "" : String(st.budget), registrationOpen: st.registrationOpen !== false };
+  if (!S.setDraft || !S.setDirty) S.setDraft = { eventName: st.eventName || "Online Monito & Monita", partyDate: st.partyDate || "", budget: st.budget === "" || st.budget == null ? "" : String(st.budget), registrationOpen: st.registrationOpen !== false };
   const sd = S.setDraft; const markS = () => { S.setDirty = true; };
+  out.push(viewSwapAdmin(A));
   out.push(viewThemeChoices(A));
   out.push(viewSlidesAdmin(A));
 
