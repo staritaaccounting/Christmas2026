@@ -408,9 +408,14 @@ function drawWheel(cv, labels, rot) {
     // Keep every label upright: text on the left half of the wheel is flipped so it never reads upside down.
     const mid = s + a / 2, flip = Math.cos(mid) < 0;
     x.save(); x.translate(c, c); x.rotate(flip ? mid + Math.PI : mid);
-    const fs = Math.max(11, Math.min(19, R * a * 0.42, 260 / Math.max(6, labels[i].length)));
-    x.font = "700 " + fs + "px Figtree, system-ui, sans-serif"; x.textAlign = flip ? "left" : "right"; x.textBaseline = "middle";
-    x.fillStyle = col === "#f4b21b" ? "#3a2800" : "#ffffff"; x.fillText(labels[i], flip ? -(R - 14) : R - 14, 0); x.restore();
+    // Fit the label between the rim and the center badge: shrink the font, then shorten if still too long.
+    const room = R - 14 - R * 0.27;
+    let fs = Math.max(10, Math.min(19, R * a * 0.42)), txt = labels[i];
+    x.font = "700 " + fs + "px Figtree, system-ui, sans-serif";
+    while (fs > 10 && x.measureText(txt).width > room) { fs -= 0.5; x.font = "700 " + fs + "px Figtree, system-ui, sans-serif"; }
+    while (txt.length > 3 && x.measureText(txt).width > room) txt = txt.slice(0, -2) + "…";
+    x.textAlign = flip ? "left" : "right"; x.textBaseline = "middle";
+    x.fillStyle = col === "#f4b21b" ? "#3a2800" : "#ffffff"; x.fillText(txt, flip ? -(R - 14) : R - 14, 0); x.restore();
   }
 }
 function animateWheel(cv, labels, idx, done, rotKey) {
@@ -486,10 +491,9 @@ function revealCard(panel, mine, pick) {
     avatarEl(rec.avatar, 120, rec.alias + "'s avatar")));
   panel.append(h("div", { class: "clue" }, h("span", { class: "clue-k", text: "Clue: who " + (rec.gender === "F" ? "she" : "he") + " is" }), h("p", { text: rec.clue || "No clue given yet." })));
   const sw = S.swap && S.swap.week;
-  panel.append(h("div", { class: "notice" }, "Keep it secret! Sign your gifts as ", h("b", { text: "“" + mine.alias + "”" }), sw ? " and, this Codename Swap week, address them to the codename below." : [" and address them to ", h("b", { text: "“" + rec.alias + "”" }), "."]));
-  if (sw) { const cn = S.swap.forPick;
-    panel.append(h("div", { class: "clue swap" }, h("span", { class: "clue-k", text: "Codename Swap · Week " + sw.number + (sw.date ? " · due " + fmtDate(sw.date) : "") }),
-      h("p", null, cn ? ["This week, label your gift for ", rec.alias, ": ", h("b", { text: "“" + cn + "”" })] : rec.alias + " hasn't spun their codename yet. Check Weekly Gifts before you wrap your gift."))); }
+  panel.append(h("div", { class: "notice" }, "Keep it secret! Sign your gifts as ", h("b", { text: "“" + mine.alias + "”" }), " and address them to ", h("b", { text: "“" + rec.alias + "”" }), "."));
+  if (sw) panel.append(h("div", { class: "clue swap" }, h("span", { class: "clue-k", text: "Codename Swap · Week " + sw.number + (sw.date ? " · due " + fmtDate(sw.date) : "") }),
+      h("p", null, "Prepare your gift for ", h("b", { text: rec.alias }), " and label it ", h("b", { text: "“" + rec.alias + "”" }), " as usual. This week, whoever swapped into that alias will receive it.")));
   const weeks = sortedWeeks(S.weeks); const stOf = weekStatus(weeks); const nx = weeks.find(w => stOf(w) === "next");
   if (nx) panel.append(h("div", { class: "notice good" }, "Next gift: ", h("b", { text: nx.theme || "theme to be spun on the Something Wheel" }), nx.date ? " · due " + fmtDate(nx.date) : "", nx.note ? " · " + nx.note : ""));
   panel.append(h("div", { class: "grid2" },
@@ -612,12 +616,13 @@ function swapReminder() {
   if (!wk) return null;
   return h("section", { class: "panel swap-reminder" },
     h("div", null, h("span", { class: "tag swap", text: "🔁 Codename Swap · Week " + wk.number + (wk.date ? " · due " + fmtDate(wk.date) : "") }),
-      h("p", { class: "sub", style: "margin-top:8px", text: !S.me ? "This week everyone gets a secret codename. Sign in, then spin yours in Weekly Gifts."
-        : sw.mine ? "You've spun your codename for this week. Find it, and your Monito or Monita's codename, in Weekly Gifts."
-        : "Reminder: this week everyone gets a secret codename. Spin yours in Weekly Gifts before " + (wk.date ? fmtDate(wk.date) : "the due date") + "." })),
+      h("p", { class: "sub", style: "margin-top:8px", text: !S.me ? "This week everyone swaps aliases. Sign in, then spin yours in Weekly Gifts."
+        : sw.mine ? "You've spun your swap codename for this week. See which gift to pick up in Weekly Gifts."
+        : "Reminder: this week everyone swaps aliases. Spin yours in Weekly Gifts before " + (wk.date ? fmtDate(wk.date) : "the due date") + "." })),
     h("button", { class: "btn " + (S.me && !sw.mine ? "gold" : ""), onclick: () => { location.hash = "weekly-gifts"; } }, S.me && !sw.mine ? "Spin my codename" : "Go to Weekly Gifts"));
 }
-/* Weekly Gifts: spin your codename, see your own and your Monito/Monita's. Nobody else's is shown. */
+/* Weekly Gifts: Codename Swap. You spin a wheel of everyone else's alias; the one you land on is your codename
+   this week. You see only your own and the one borrowed by the person you give to. */
 function swapPanel() {
   const sw = S.swap || {}; const wk = sw.week;
   if (!wk) return null;
@@ -625,70 +630,58 @@ function swapPanel() {
   const panel = h("section", { class: "panel swap-panel" },
     h("div", { class: "panel-head" }, h("div", null,
       h("span", { class: "tag swap", text: "🔁 Codename Swap · Week " + wk.number + (wk.date ? " · due " + fmtDate(wk.date) : "") }),
-      h("h2", { style: "margin-top:8px", text: "Spin your secret codename" }),
-      h("p", { class: "sub", text: "This week everyone gets a new codename from the wheel, and the gift you receive will be labeled with it. Codenames are private: you see only your own, and the codename of the person you're giving to." }))));
+      h("h2", { style: "margin-top:8px", text: "Swap codenames for the week" }),
+      h("p", { class: "sub", text: "This week everyone trades aliases. Keep preparing your gift for your own Monito or Monita and label it with their alias as usual. Then spin the wheel of everyone else's alias: the one you land on is your codename for the week, and you'll receive the gift labeled with it, prepared by that person's giver. Nobody gets their own, and your codename stays private." }))));
   if (!S.me) { panel.append(h("div", { class: "notice", text: "Sign in to spin your codename for this week." })); return panel; }
-  if (sw.mine) panel.append(h("div", { class: "clue swap" }, h("span", { class: "clue-k", text: "Your codename this week" }), h("p", null, h("b", { text: sw.mine }), " · watch for a gift labeled with it!")));
-  else {
-    const left = sw.left || [];
-    const cv = h("canvas", { role: "img", "aria-label": "Codename wheel with " + left.length + " codenames" });
+  if (sw.mine) {
+    const from = P[sw.mineFrom];
+    panel.append(h("div", { class: "clue swap" }, h("span", { class: "clue-k", text: "Your codename this week" }),
+      h("div", { class: "row", style: "flex-wrap:nowrap;align-items:center;gap:12px" }, from ? avatarEl(from.avatar, 48) : null, h("p", null, "You're ", h("b", { text: "“" + sw.mine + "”" }), " this week. Pick up the gift labeled ", h("b", { text: "“" + sw.mine + "”" }), ": it was prepared by their giver."))));
+  } else {
+    const others = S.order.filter(id => id !== S.me.id && P[id]);
+    const labels = others.map(id => { const a = P[id].alias; return a.length > 16 ? a.slice(0, 15) + "…" : a; });
+    const cv = h("canvas", { role: "img", "aria-label": "Codename wheel with " + others.length + " aliases" });
     const out = h("div", { class: "roller", "aria-live": "polite" });
-    const btn = h("button", { class: "btn gold spin-btn", disabled: S.codeSpinning || !left.length, onclick: () => spinCodename(cv, btn, left, out) }, S.codeSpinning ? "Spinning…" : "Spin my codename");
+    const btn = h("button", { class: "btn gold spin-btn", disabled: S.codeSpinning || !sw.canSpin, onclick: () => spinCodename(cv, btn, others, labels, out) }, S.codeSpinning ? "Spinning…" : "Spin my codename");
     panel.append(h("div", { class: "wheel-wrap" },
-      h("div", { class: "wheel-box sm" }, h("span", { class: "pointer", "aria-hidden": "true" }), cv, h("div", { class: "hub hub-text" }, h("span", { text: "Code\u00adname" }))), btn, out));
-    requestAnimationFrame(() => drawWheel(cv, left.map(c => c.length > 14 ? c.slice(0, 13) + "…" : c), S.codeRot || 0));
+      h("div", { class: "wheel-box sm" }, h("span", { class: "pointer", "aria-hidden": "true" }), cv, h("div", { class: "hub hub-text" }, h("span", { text: "Swap!" }))), btn, out,
+      sw.canSpin ? h("p", { class: "hint", text: "Your own alias isn't on your wheel." }) : h("p", { class: "hint", text: "No alias is left for you to land on. The organizer will sort out your codename." })));
+    requestAnimationFrame(() => drawWheel(cv, labels, S.codeRot || 0));
   }
-  if (S.myPick && P[S.myPick]) panel.append(h("div", { class: "notice good" }, "🎁 Your gift for ", h("b", { text: P[S.myPick].alias }), " this week: ",
-    sw.forPick ? h("b", { text: "label it “" + sw.forPick + "”" }) : "they haven't spun their codename yet. Check back here before you wrap it."));
-  else if (!S.myPick) panel.append(h("p", { class: "hint", text: "Once you've spun your Monito or Monita, their codename for this week shows here." }));
+  if (S.myPick && P[S.myPick]) panel.append(h("div", { class: "notice good" }, "🎁 Your gift: prepare it for ", h("b", { text: P[S.myPick].alias }), " as usual (their wish list and this week's theme) and label it ", h("b", { text: "“" + P[S.myPick].alias + "”" }), ". This week, whoever swapped into that alias will receive it."));
   return panel;
 }
-async function spinCodename(cv, btn, left, out) {
+async function spinCodename(cv, btn, others, labels, out) {
   if (S.codeSpinning) return;
   S.codeSpinning = true; btn.disabled = true; btn.textContent = "Spinning…"; S.rolling = true;
-  const lab = c => c.length > 14 ? c.slice(0, 13) + "…" : c;
   let idle = true, rot = S.codeRot || 0, last = performance.now();
-  const idleSpin = now => { if (!idle) return; rot += (now - last) / 1000 * 7; last = now; drawWheel(cv, left.map(lab), rot); requestAnimationFrame(idleSpin); };
+  const idleSpin = now => { if (!idle) return; rot += (now - last) / 1000 * 7; last = now; drawWheel(cv, labels, rot); requestAnimationFrame(idleSpin); };
   requestAnimationFrame(idleSpin);
   let res;
   try { res = await api("spinCodename", null, true); }
   catch (e) { idle = false; S.codeRot = rot % (2 * Math.PI); S.rolling = false; S.codeSpinning = false; toast(e.message, 5500); render(); return; }
   idle = false; S.codeRot = rot % (2 * Math.PI);
-  let list = left.slice(); let k = list.findIndex(c => c.toLowerCase() === String(res.codename).toLowerCase());
-  if (k < 0) { list = list.concat(res.codename); k = list.length - 1; }
-  animateWheel(cv, list.map(lab), k, () => {
+  let list = others.slice(), lab = labels.slice(); let k = list.indexOf(res.fromId);
+  if (k < 0) { list.push(res.fromId); lab.push(res.codename); k = list.length - 1; }
+  animateWheel(cv, lab, k, () => {
     out.textContent = res.codename;
-    setTimeout(() => { S.rolling = false; S.codeSpinning = false; render(); toast("Your codename this week is " + res.codename + "!", 5000); }, 1800);
+    setTimeout(() => { S.rolling = false; S.codeSpinning = false; render(); toast("You're “" + res.codename + "” this week!", 5000); }, 1800);
   }, "codeRot");
 }
 function viewSwapAdmin(A) {
   const sw = A.swap || {}; const wk = sw.week;
-  const P = {}; A.participants.forEach(p => { P[p.id] = p; });
   const panel = h("section", { class: "panel" }, h("div", { class: "panel-head" }, h("div", null, h("h2", { text: "Codename Swap" }),
-    h("p", { class: "sub", text: "In a Codename Swap week, each person spins a codename in Weekly Gifts and receives gifts labeled with it. Staff see only their own codename and their Monito/Monita\u2019s; this full list is for you only. Mark swap weeks in Weekly gift themes below." }))));
-  if (!wk) { panel.append(h("p", { class: "hint", text: (sw.weeks || []).length ? "No Codename Swap week is coming up. The marked swap weeks have passed." : "No weeks are marked as Codename Swap yet." })); }
-  else {
-    const byUser = {}; (sw.board || []).forEach(b => { byUser[b.userId] = b.codename; });
-    const waiting = A.participants.filter(p => !byUser[p.id]);
-    panel.append(h("div", { class: "notice good", text: "Week " + wk.number + (wk.date ? " (due " + fmtDate(wk.date) + ")" : "") + " is the current Codename Swap. " + (A.participants.length - waiting.length) + " of " + A.participants.length + " have spun. Staff spin in Weekly Gifts; the home page shows a reminder." }));
-    if (waiting.length) panel.append(h("p", { class: "hint" }, "Still to spin: ", waiting.map(p => p.alias).join(", ")),
-      h("div", null, h("button", { class: "btn", onclick: async () => { if (await modal("Spin for everyone left?", "Gives a random codename to the " + waiting.length + " people who haven't spun this week.", "Spin for them")) act("assignCodenames", null, "Everyone has a codename this week."); } }, "Spin codenames for everyone left")));
-    const rows = A.participants.filter(p => byUser[p.id]).sort((a, b) => a.alias.localeCompare(b.alias));
-    if (rows.length) panel.append(h("div", { class: "tablewrap" }, h("table", null, h("thead", null, h("tr", null, h("th", { text: "Alias" }), h("th", { text: "Codename this week" }), h("th", { text: "" }))),
-      h("tbody", null, rows.map(p => h("tr", null, h("td", null, h("div", { class: "row", style: "flex-wrap:nowrap;gap:8px" }, avatarEl(p.avatar, 28), p.alias)), h("td", { text: byUser[p.id] }),
-        h("td", null, h("button", { class: "btn sm", onclick: async () => { if (await modal("Let " + p.alias + " spin again?", "Their codename “" + byUser[p.id] + "” is cleared and they can spin a new one.", "Clear codename")) act("resetCodename", { id: p.id }, p.alias + " can spin again."); } }, "Let them re-spin"))))))));
-  }
-  if (!S.codeDraft || !S.codeDirty) S.codeDraft = ((sw.options) || []).slice();
-  const cd = S.codeDraft;
-  const inp = h("input", { type: "text", id: "newCode", maxlength: "30", placeholder: "e.g. Christmas Lantern", style: "max-width:260px", onkeydown: e => { if (e.key === "Enter") { e.preventDefault(); add(); } } });
-  const add = () => { const v = inp.value.trim(); if (!v) return; if (cd.some(o => o.toLowerCase() === v.toLowerCase())) return toast("That codename is already on the wheel."); cd.push(v); S.codeDirty = true; render(); setTimeout(() => { const n = document.getElementById("newCode"); if (n) n.focus(); }, 0); };
-  panel.append(h("details", { class: "code-opts" }, h("summary", null, "Codename wheel choices (" + cd.length + ")"),
-    h("p", { class: "hint", text: "No two people get the same codename in a week. Keep at least as many choices as staff; if they run out, numbers are added (for example “Parol 2”)." }),
-    h("div", { class: "sugg" }, cd.map((o, i) => h("span", { class: "chip-lite" }, o, h("button", { class: "chip-x", "aria-label": "Remove " + o, onclick: () => { cd.splice(i, 1); S.codeDirty = true; render(); } }, "✕")))),
-    h("div", { class: "row" }, inp, h("button", { class: "btn", onclick: add }, "+ Add codename"), h("span", { class: "spacer" }),
-      S.codeDirty ? h("button", { class: "btn", onclick: () => { S.codeDirty = false; S.codeDraft = null; render(); } }, "Discard") : null,
-      h("button", { class: "btn primary", disabled: !S.codeDirty, onclick: async () => { const r = await act("saveCodenameOptions", { options: cd }, "Codename choices saved."); if (r) { S.codeDirty = false; S.codeDraft = null; render(); } } }, S.codeDirty ? "Save codenames" : "Saved"))));
-  if (S.codeDirty) panel.querySelector("details").open = true;
+    h("p", { class: "sub", text: "In a Codename Swap week, gifts are prepared and labeled as usual, but everyone trades aliases: each person spins a wheel of the other aliases in Weekly Gifts and picks up the gift labeled with the alias they land on. Staff see only their own; this full list is for you only. Mark swap weeks in Weekly gift themes below." }))));
+  if (!wk) { panel.append(h("p", { class: "hint", text: (sw.weeks || []).length ? "No Codename Swap week is coming up. The marked swap weeks have passed." : "No weeks are marked as Codename Swap yet." })); return panel; }
+  const byUser = {}; (sw.board || []).forEach(b => { byUser[b.userId] = b.codename; });
+  const waiting = A.participants.filter(p => !byUser[p.id]);
+  panel.append(h("div", { class: "notice good", text: "Week " + wk.number + (wk.date ? " (due " + fmtDate(wk.date) + ")" : "") + " is the current Codename Swap. " + (A.participants.length - waiting.length) + " of " + A.participants.length + " have spun. Staff spin in Weekly Gifts; the home page shows a reminder." }));
+  if (waiting.length) panel.append(h("p", { class: "hint" }, "Still to spin: ", waiting.map(p => p.alias).join(", ")),
+    h("div", null, h("button", { class: "btn", onclick: async () => { if (await modal("Spin for everyone left?", "Gives a swapped alias to the " + waiting.length + " people who haven't spun this week. Nobody gets their own.", "Spin for them")) act("assignCodenames", null, "Everyone has a codename this week."); } }, "Spin codenames for everyone left")));
+  const rows = A.participants.filter(p => byUser[p.id]).sort((a, b) => a.alias.localeCompare(b.alias));
+  if (rows.length) panel.append(h("div", { class: "tablewrap" }, h("table", null, h("thead", null, h("tr", null, h("th", { text: "Alias" }), h("th", { text: "Picks up the gift labeled" }), h("th", { text: "" }))),
+    h("tbody", null, rows.map(p => h("tr", null, h("td", null, h("div", { class: "row", style: "flex-wrap:nowrap;gap:8px" }, avatarEl(p.avatar, 28), p.alias)), h("td", null, h("b", { text: "“" + byUser[p.id] + "”" })),
+      h("td", null, h("button", { class: "btn sm", onclick: async () => { if (await modal("Let " + p.alias + " spin again?", "Their codename “" + byUser[p.id] + "” goes back on the wheel and they can spin again.", "Clear codename")) act("resetCodename", { id: p.id }, p.alias + " can spin again."); } }, "Let them re-spin"))))))));
   return panel;
 }
 
